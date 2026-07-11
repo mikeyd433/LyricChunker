@@ -73,3 +73,15 @@ blender --background scene.blend --python lyric_chunker.py
 
 Pure logic (line parsing, glyph clustering) has no `bpy` dependency and can
 be unit-tested outside Blender.
+
+## Releasing
+
+Every push to `main` that changes `lyric_chunker.py` triggers the
+`sync-downloads` GitHub Action, which copies the file into the Dabingabongo
+repo's `/downloads/` folder and refreshes its `downloads.json` entry
+(version from `bl_info`, size, date — plus a changelog entry when the
+version changed, using the commit subject as the note). Bump the `bl_info`
+version when the change is worth a changelog line. The push to Dabingabongo
+`main` kicks off its Netlify deploy, so the live downloads page updates on
+its own. The action needs a `DABINGABONGO_PUSH_TOKEN` repo secret (a
+fine-grained PAT with Contents read/write on `mikeyd433/Dabingabongo`).
