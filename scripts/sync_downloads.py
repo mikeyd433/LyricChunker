@@ -42,16 +42,24 @@ def main():
     size_kb = max(1, round(addon.stat().st_size / 1024))
     today = datetime.date.today().isoformat()
 
-    dest = site / "downloads" / "lyric_chunker.py"
-    dest.parent.mkdir(exist_ok=True)
-    shutil.copyfile(addon, dest)
-
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     item = next(
         (i for i in manifest.get("items", []) if i.get("id") == ITEM_ID), None
     )
     if item is None:
         raise SystemExit(f'no item with "id": "{ITEM_ID}" in {manifest_path}')
+
+    dest = site / "downloads" / "lyric_chunker.py"
+    if (
+        dest.exists()
+        and dest.read_bytes() == addon.read_bytes()
+        and item.get("version") == version
+    ):
+        print(f"already in sync at v{version} — nothing to update")
+        return
+
+    dest.parent.mkdir(exist_ok=True)
+    shutil.copyfile(addon, dest)
 
     previous = item.get("version")
     item["version"] = version
