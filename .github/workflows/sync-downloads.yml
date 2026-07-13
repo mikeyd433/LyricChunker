@@ -3,7 +3,7 @@
 # repo and refreshes its downloads.json entry, which kicks off the site's
 # Netlify deploy.
 #
-# Requires a DABINGABONGO_PUSH_TOKEN repo secret — a fine-grained PAT with
+# Requires a LYRIC_CHUNKER_SYNC repo secret — a fine-grained PAT with
 # Contents: Read and write on mikeyd433/Dabingabongo.
 name: Sync to dabingabongo downloads
 
@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: mikeyd433/Dabingabongo
-          token: ${{ secrets.DABINGABONGO_PUSH_TOKEN }}
+          token: ${{ secrets.LYRIC_CHUNKER_SYNC }}
           path: site
 
       - name: Update download file and manifest

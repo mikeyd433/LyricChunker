@@ -83,5 +83,5 @@ repo's `/downloads/` folder and refreshes its `downloads.json` entry
 version changed, using the commit subject as the note). Bump the `bl_info`
 version when the change is worth a changelog line. The push to Dabingabongo
 `main` kicks off its Netlify deploy, so the live downloads page updates on
-its own. The action needs a `DABINGABONGO_PUSH_TOKEN` repo secret (a
+its own. The action needs a `LYRIC_CHUNKER_SYNC` repo secret (a
 fine-grained PAT with Contents read/write on `mikeyd433/Dabingabongo`).
