@@ -55,7 +55,12 @@ you generated, otherwise the Line Number field.
 - Chunk detection clusters mesh islands by X overlap, so dotted/accented
   glyphs stay whole. If a font's ligatures merge letters (or a glyph like a
   straight double-quote splits oddly), generation fails with a clear error
-  instead of mis-splitting — try a different font or rewording.
+  instead of mis-splitting — try a different font or rewording. A failed
+  generate leaves any previously generated version of that line untouched.
+- Only collections the add-on created (or that contain its chunk objects)
+  are treated as line collections — your own collection that happens to be
+  named `Line5` is never reused or emptied, though its name can block
+  generating that line number until you rename it.
 - Film > Transparent is enabled automatically at render time if it's off
   (noted in the Status box).
 - The template object is hidden from renders automatically during a batch,

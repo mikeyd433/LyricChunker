@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Lyric Chunker",
     "author": "Mikey D",
-    "version": (1, 0, 0),
+    "version": (1, 0, 1),
     "blender": (4, 0, 0),
     "location": "3D Viewport > Sidebar (N) > Lyric Chunker",
     "description": "Generate styled 3D text split into syllable chunks and batch-render each as a transparent PNG",
@@ -22,6 +22,10 @@ from bpy.props import (
 from bpy.types import Operator, Panel, PropertyGroup
 
 BACKUP_COLL_NAME = "_LyricBackups"
+# Custom property stamped on collections this add-on creates, so that a
+# user's own collection that happens to be named "Line5" is never treated
+# as (or deleted as) a generated line.
+LC_COLL_TAG = "lyric_chunker_line"
 LINE_COLL_RE = re.compile(r"^Line0*(\d+)$")
 CHUNK_NAME_RE = re.compile(r"^Line0*(\d+)_Chunk0*(\d+)$")
 SOURCE_NAME_RE = re.compile(r"^Line0*(\d+)_source")
@@ -134,10 +138,27 @@ def deselect_all(context):
         obj.select_set(False)
 
 
+def line_collection_number(coll):
+    """Line number if coll is a line collection this add-on made, else None.
+
+    Requires the LC_COLL_TAG custom property; collections generated before
+    the tag existed are recognized by containing their own chunk objects."""
+    m = LINE_COLL_RE.match(coll.name)
+    if not m:
+        return None
+    n = int(m.group(1))
+    if coll.get(LC_COLL_TAG):
+        return n
+    for obj in coll.objects:
+        cm = CHUNK_NAME_RE.match(obj.name)
+        if cm and int(cm.group(1)) == n:
+            return n
+    return None
+
+
 def find_line_collection(scene, line_no):
     for coll in scene.collection.children_recursive:
-        m = LINE_COLL_RE.match(coll.name)
-        if m and int(m.group(1)) == line_no:
+        if line_collection_number(coll) == line_no:
             return coll
     return None
 
@@ -253,8 +274,8 @@ def collect_line_chunks(scene):
     """Map line number -> (collection, [chunk objects sorted by chunk #])."""
     lines = {}
     for coll in scene.collection.children_recursive:
-        m = LINE_COLL_RE.match(coll.name)
-        if not m:
+        n = line_collection_number(coll)
+        if n is None:
             continue
         entries = []
         for obj in coll.objects:
@@ -263,7 +284,7 @@ def collect_line_chunks(scene):
                 entries.append((int(cm.group(2)), obj))
         if entries:
             entries.sort(key=lambda e: e[0])
-            lines[int(m.group(1))] = (coll, [obj for _, obj in entries])
+            lines[n] = (coll, [obj for _, obj in entries])
     return lines
 
 
@@ -273,9 +294,9 @@ def get_target_line(context):
     obj = context.active_object
     if obj is not None:
         for coll in obj.users_collection:
-            m = LINE_COLL_RE.match(coll.name)
-            if m:
-                return int(m.group(1))
+            n = line_collection_number(coll)
+            if n is not None:
+                return n
     props = context.scene.lyric_chunker
     if props.last_line > 0:
         return props.last_line
@@ -374,14 +395,25 @@ class LC_OT_generate_chunks(Operator):
 
         line_no = props.line_number
         pad = props.zero_pad
+        coll_name = line_coll_name(line_no, pad)
+
+        # A foreign collection holding the target name would silently hijack
+        # the naming (Blender appends .001) — refuse before touching anything.
+        coll = find_line_collection(scene, line_no)
+        existing = bpy.data.collections.get(coll_name)
+        if existing is not None and existing is not coll:
+            return self.fail(
+                context,
+                f"A collection named '{coll_name}' already exists but is "
+                "not this line's collection — rename it or use a different "
+                "line number",
+            )
 
         if context.object is not None and context.object.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
 
-        replaced = remove_existing_line(context, line_no)
-
         # One text object for the whole line so Blender handles kerning.
-        curve = bpy.data.curves.new(f"{line_coll_name(line_no, pad)}_text", type='FONT')
+        curve = bpy.data.curves.new(f"{coll_name}_text", type='FONT')
         curve.body = full_text
         text_obj = bpy.data.objects.new(curve.name, curve)
         scene.collection.objects.link(text_obj)
@@ -389,10 +421,11 @@ class LC_OT_generate_chunks(Operator):
         context.view_layer.update()
 
         # Untouched backup of the styled text before any destructive step.
+        # It keeps the copy's placeholder name until the old line is removed
+        # below, so a failed run can't collide with the previous backup.
         backup_coll = get_backup_collection(context)
         source_obj = text_obj.copy()
         source_obj.data = text_obj.data.copy()
-        source_obj.name = f"{line_coll_name(line_no, pad)}_source"
         source_obj.hide_render = True
         backup_coll.objects.link(source_obj)
 
@@ -415,13 +448,20 @@ class LC_OT_generate_chunks(Operator):
         if len(clusters) != expected:
             for obj in islands:
                 remove_object_and_data(obj)
+            source_obj.name = f"{coll_name}_source"
             return self.fail(
                 context,
                 f"Line {line_no}: expected {expected} glyphs but found "
                 f"{len(clusters)} clusters — ligatures or split glyphs "
                 "(e.g. straight double quotes) break count mapping. The "
-                f"source text is saved in {BACKUP_COLL_NAME}/{source_obj.name}",
+                f"source text is saved in {BACKUP_COLL_NAME}/{source_obj.name}"
+                " and any existing line was left untouched",
             )
+
+        # The new line is valid — only now replace the old one, so a failed
+        # generate never costs previously placed chunks.
+        replaced = remove_existing_line(context, line_no)
+        source_obj.name = f"{coll_name}_source"
 
         chunk_objs = []
         cursor = 0
@@ -450,12 +490,12 @@ class LC_OT_generate_chunks(Operator):
         context.view_layer.objects.active = chunk_objs[0]
         bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_MASS', center='MEDIAN')
 
-        coll = find_line_collection(scene, line_no)
         if coll is None:
-            coll = bpy.data.collections.new(line_coll_name(line_no, pad))
+            coll = bpy.data.collections.new(coll_name)
             scene.collection.children.link(coll)
         else:
-            coll.name = line_coll_name(line_no, pad)
+            coll.name = coll_name
+        coll[LC_COLL_TAG] = True
         for obj in chunk_objs:
             for other in list(obj.users_collection):
                 other.objects.unlink(obj)
