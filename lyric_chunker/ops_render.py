@@ -668,7 +668,9 @@ class LC_OT_generate_comps(Operator):
                 warned.append(f"{os.path.basename(path)}: {exc}")
                 continue
             folder = os.path.dirname(path)
-            text, warnings = generate_line_setting(doc, folder)
+            text, warnings = generate_line_setting(
+                doc, folder, untimed_seconds=props.untimed_spread
+            )
             warned.extend(warnings)
             setting_path = os.path.splitext(path)[0] + ".setting"
             try:

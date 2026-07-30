@@ -172,6 +172,16 @@ class LyricChunkerProps(PropertyGroup):
         subtype='FILE_PATH',
         default="",
     )
+    untimed_spread: FloatProperty(
+        name="Untimed Spread",
+        description=(
+            "With no SRT or marker timing, Generate Fusion Comps cascades "
+            "each line's chunks across this many seconds"
+        ),
+        default=3.0,
+        min=0.1,
+        max=30.0,
+    )
     use_markers: BoolProperty(
         name="Use Timeline Markers",
         description=(

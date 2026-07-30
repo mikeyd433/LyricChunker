@@ -110,6 +110,7 @@ class LC_PT_panel(Panel):
         box.label(text="Timing", icon='TIME')
         box.prop(props, "srt_path", text="SRT")
         box.prop(props, "use_markers")
+        box.prop(props, "untimed_spread")
 
         box = layout.box()
         box.label(text="Style Presets", icon='PRESET')
