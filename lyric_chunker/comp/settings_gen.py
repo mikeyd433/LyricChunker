@@ -42,6 +42,12 @@ _ROW_Y = 33.0
 # image out.
 LOADER_HOLD_PADDING = 14400
 
+# With no timing data at all, chunks cascade across this many seconds
+# (weighted by chunk length, like the SRT distribution) instead of all
+# firing at frame 0. Real timing comes from markers or SRT.
+DEFAULT_UNTIMED_SECONDS = 3.0
+UNTIMED_MIN_WEIGHT = 2
+
 
 def _join_clip_path(png_dir, filename):
     """Join using the clip dir's own separator style — the path is
@@ -59,25 +65,44 @@ def _num(value):
     return text if text else "0"
 
 
-def line_local_frames(doc):
+def line_local_frames(doc, untimed_seconds=DEFAULT_UNTIMED_SECONDS):
     """Per-chunk start frames relative to the line's own start, for
     comps that live on a per-line timeline clip starting at frame 0.
 
-    Returns (frames, warnings): one int per chunk. Chunks without
-    timing land at 0 and produce a warning.
+    Fully untimed lines get a length-weighted cascade across
+    ``untimed_seconds`` (§4.4-style scaffold). A partially timed line
+    keeps its timed chunks; the untimed ones land at 0 with a warning.
     """
     warnings = []
     render = doc.get("render", {})
     fps = render.get("fps", 24) / render.get("fps_base", 1.0)
     line = doc.get("line", {})
-    starts = [c.get("start_frame") for c in doc["chunks"]]
+    chunks = doc["chunks"]
+    starts = [c.get("start_frame") for c in chunks]
+
+    if all(s is None for s in starts):
+        span = fps * untimed_seconds
+        weights = [max(len(c.get("text", "")), UNTIMED_MIN_WEIGHT) for c in chunks]
+        total = sum(weights)
+        cursor = 0.0
+        frames = []
+        for w in weights:
+            frames.append(round(cursor))
+            cursor += span * (w / total)
+        warnings.append(
+            f"no timing data — chunks spread across the first "
+            f"{untimed_seconds:g}s as a scaffold; use markers or an SRT "
+            "for real timing"
+        )
+        return frames, warnings
+
     if line.get("start_seconds") is not None:
         base = round(line["start_seconds"] * fps)
     else:
         timed = [s for s in starts if s is not None]
         base = min(timed) if timed else 0
     frames = []
-    for chunk, start in zip(doc["chunks"], starts):
+    for chunk, start in zip(chunks, starts):
         if start is None:
             warnings.append(
                 f"{chunk['name']}: no timing (timing_source "
@@ -229,6 +254,7 @@ def generate_line_setting(
     dip_depth=DEFAULT_DIP_DEPTH,
     dip_in=DEFAULT_DIP_IN,
     dip_out=DEFAULT_DIP_OUT,
+    untimed_seconds=DEFAULT_UNTIMED_SECONDS,
 ):
     """Build the pasteable node-graph text for one line manifest.
 
@@ -240,7 +266,7 @@ def generate_line_setting(
     chunks = doc["chunks"]
     if not chunks:
         raise ValueError("manifest has no chunks")
-    frames, warnings = line_local_frames(doc)
+    frames, warnings = line_local_frames(doc, untimed_seconds)
     length = comp_length(doc, frames)
 
     tools = []

@@ -54,7 +54,7 @@ def test_line_local_frames_are_relative_to_line_start():
     assert warnings == []
 
 
-def test_untimed_chunk_lands_at_zero_with_warning():
+def test_partially_untimed_chunk_lands_at_zero_with_warning():
     doc = make_doc(n_chunks=2)
     doc["chunks"][1]["start_frame"] = None
     doc["chunks"][1]["start_seconds"] = None
@@ -62,6 +62,25 @@ def test_untimed_chunk_lands_at_zero_with_warning():
     frames, warnings = gen.line_local_frames(doc)
     assert frames[1] == 0
     assert len(warnings) == 1
+
+
+def test_fully_untimed_line_cascades_across_default_span():
+    doc = make_doc(n_chunks=4)
+    for chunk in doc["chunks"]:
+        chunk["start_frame"] = None
+        chunk["start_seconds"] = None
+        chunk["timing_source"] = "none"
+    doc["line"]["start_seconds"] = None
+    doc["line"]["end_seconds"] = None
+    frames, warnings = gen.line_local_frames(doc)
+    # Equal-length chunks over 3s at 24fps -> 72 frames / 4 = 18 apart.
+    assert frames == [0, 18, 36, 54]
+    assert any("scaffold" in w for w in warnings)
+    # Weighted: a longer chunk holds the cursor longer.
+    doc["chunks"][0]["text"] = "aaaaaaaaaaaa"
+    frames, _ = gen.line_local_frames(doc)
+    assert frames[0] == 0
+    assert frames[1] > 18
 
 
 def test_generated_setting_structure():

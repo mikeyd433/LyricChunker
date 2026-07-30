@@ -80,6 +80,10 @@ def main():
                     help="frames from chunk start to full dip/color, default 1")
     ap.add_argument("--dip-out", type=int, default=DEFAULT_DIP_OUT,
                     help="frames to recover from the dip, default 3")
+    ap.add_argument("--untimed-seconds", type=float,
+                    default=_gen.DEFAULT_UNTIMED_SECONDS,
+                    help="with no timing data, cascade chunks across this "
+                         "many seconds (default 3)")
     args = ap.parse_args()
 
     for manifest_path in find_manifests(args.paths):
@@ -92,6 +96,7 @@ def main():
             dip_depth=args.dip_depth,
             dip_in=args.dip_in,
             dip_out=args.dip_out,
+            untimed_seconds=args.untimed_seconds,
         )
         out_dir = args.out_dir or manifest_path.parent
         out_dir.mkdir(parents=True, exist_ok=True)
