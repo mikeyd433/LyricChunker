@@ -110,7 +110,12 @@ class LC_PT_panel(Panel):
         box.label(text="Timing", icon='TIME')
         box.prop(props, "srt_path", text="SRT")
         box.prop(props, "use_markers")
-        box.prop(props, "untimed_spread")
+        row = box.row(align=True)
+        if props.untimed_spread_unit == 'FRAMES':
+            row.prop(props, "untimed_spread_frames")
+        else:
+            row.prop(props, "untimed_spread")
+        row.prop(props, "untimed_spread_unit", text="")
 
         box = layout.box()
         box.label(text="Style Presets", icon='PRESET')

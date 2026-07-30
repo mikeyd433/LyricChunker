@@ -65,13 +65,16 @@ def _num(value):
     return text if text else "0"
 
 
-def line_local_frames(doc, untimed_seconds=DEFAULT_UNTIMED_SECONDS):
+def line_local_frames(doc, untimed_seconds=DEFAULT_UNTIMED_SECONDS,
+                      untimed_frames=None):
     """Per-chunk start frames relative to the line's own start, for
     comps that live on a per-line timeline clip starting at frame 0.
 
     Fully untimed lines get a length-weighted cascade across
-    ``untimed_seconds`` (§4.4-style scaffold). A partially timed line
-    keeps its timed chunks; the untimed ones land at 0 with a warning.
+    ``untimed_seconds`` — or exactly ``untimed_frames`` frames when
+    given, which overrides the seconds value (§4.4-style scaffold). A
+    partially timed line keeps its timed chunks; the untimed ones land
+    at 0 with a warning.
     """
     warnings = []
     render = doc.get("render", {})
@@ -81,7 +84,7 @@ def line_local_frames(doc, untimed_seconds=DEFAULT_UNTIMED_SECONDS):
     starts = [c.get("start_frame") for c in chunks]
 
     if all(s is None for s in starts):
-        span = fps * untimed_seconds
+        span = untimed_frames if untimed_frames else fps * untimed_seconds
         weights = [max(len(c.get("text", "")), UNTIMED_MIN_WEIGHT) for c in chunks]
         total = sum(weights)
         cursor = 0.0
@@ -89,10 +92,13 @@ def line_local_frames(doc, untimed_seconds=DEFAULT_UNTIMED_SECONDS):
         for w in weights:
             frames.append(round(cursor))
             cursor += span * (w / total)
+        spread = (
+            f"{untimed_frames} frames" if untimed_frames
+            else f"{untimed_seconds:g}s"
+        )
         warnings.append(
-            f"no timing data — chunks spread across the first "
-            f"{untimed_seconds:g}s as a scaffold; use markers or an SRT "
-            "for real timing"
+            f"no timing data — chunks spread across the first {spread} "
+            "as a scaffold; use markers or an SRT for real timing"
         )
         return frames, warnings
 
@@ -263,6 +269,7 @@ def generate_line_setting(
     dip_in=DEFAULT_DIP_IN,
     dip_out=DEFAULT_DIP_OUT,
     untimed_seconds=DEFAULT_UNTIMED_SECONDS,
+    untimed_frames=None,
 ):
     """Build the pasteable node-graph text for one line manifest.
 
@@ -274,7 +281,7 @@ def generate_line_setting(
     chunks = doc["chunks"]
     if not chunks:
         raise ValueError("manifest has no chunks")
-    frames, warnings = line_local_frames(doc, untimed_seconds)
+    frames, warnings = line_local_frames(doc, untimed_seconds, untimed_frames)
     length = comp_length(doc, frames)
 
     tools = []

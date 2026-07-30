@@ -83,6 +83,19 @@ def test_fully_untimed_line_cascades_across_default_span():
     assert frames[1] > 18
 
 
+def test_untimed_frames_override_seconds():
+    doc = make_doc(n_chunks=4)
+    for chunk in doc["chunks"]:
+        chunk["start_frame"] = None
+        chunk["start_seconds"] = None
+        chunk["timing_source"] = "none"
+    doc["line"]["start_seconds"] = None
+    doc["line"]["end_seconds"] = None
+    frames, warnings = gen.line_local_frames(doc, untimed_frames=28)
+    assert frames == [0, 7, 14, 21]
+    assert any("28 frames" in w for w in warnings)
+
+
 def test_generated_setting_structure():
     doc = make_doc()
     text, warnings = gen.generate_line_setting(doc, "C:\\renders\\Line 16")

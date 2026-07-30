@@ -84,6 +84,9 @@ def main():
                     default=_gen.DEFAULT_UNTIMED_SECONDS,
                     help="with no timing data, cascade chunks across this "
                          "many seconds (default 3)")
+    ap.add_argument("--untimed-frames", type=int, default=None,
+                    help="with no timing data, cascade chunks across exactly "
+                         "this many frames (overrides --untimed-seconds)")
     args = ap.parse_args()
 
     for manifest_path in find_manifests(args.paths):
@@ -97,6 +100,7 @@ def main():
             dip_in=args.dip_in,
             dip_out=args.dip_out,
             untimed_seconds=args.untimed_seconds,
+            untimed_frames=args.untimed_frames,
         )
         out_dir = args.out_dir or manifest_path.parent
         out_dir.mkdir(parents=True, exist_ok=True)

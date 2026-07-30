@@ -669,7 +669,12 @@ class LC_OT_generate_comps(Operator):
                 continue
             folder = os.path.dirname(path)
             text, warnings = generate_line_setting(
-                doc, folder, untimed_seconds=props.untimed_spread
+                doc, folder,
+                untimed_seconds=props.untimed_spread,
+                untimed_frames=(
+                    props.untimed_spread_frames
+                    if props.untimed_spread_unit == 'FRAMES' else None
+                ),
             )
             warned.extend(warnings)
             setting_path = os.path.splitext(path)[0] + ".setting"

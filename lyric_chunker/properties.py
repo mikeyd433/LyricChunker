@@ -6,6 +6,7 @@ import bpy
 from bpy.props import (
     BoolProperty,
     CollectionProperty,
+    EnumProperty,
     FloatProperty,
     IntProperty,
     PointerProperty,
@@ -181,6 +182,24 @@ class LyricChunkerProps(PropertyGroup):
         default=3.0,
         min=0.1,
         max=30.0,
+    )
+    untimed_spread_frames: IntProperty(
+        name="Untimed Spread",
+        description=(
+            "With no SRT or marker timing, Generate Fusion Comps cascades "
+            "each line's chunks across this many frames"
+        ),
+        default=24,
+        min=1,
+        max=10000,
+    )
+    untimed_spread_unit: EnumProperty(
+        name="Spread Unit",
+        items=(
+            ('SECONDS', "Seconds", "Set the untimed cascade in seconds"),
+            ('FRAMES', "Frames", "Set the untimed cascade in frames"),
+        ),
+        default='SECONDS',
     )
     use_markers: BoolProperty(
         name="Use Timeline Markers",
