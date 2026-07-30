@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "lyric_chunker"
+version = "2.0.0"
+name = "Lyric Chunker"
+tagline = "Delimited lyrics to per-syllable stills with a timing manifest"
+maintainer = "Mikey D <michaeldumas433@gmail.com>"
+type = "add-on"
+
+website = "https://dabingabongo.com/downloads"
+
+tags = ["3D View", "Render"]
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]

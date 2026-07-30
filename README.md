@@ -1,87 +1,151 @@
 # Lyric Chunker
 
-A Blender add-on that automates the syllable-chunk pipeline for the music
-visualizer workflow: type a delimited lyric line, get styled 3D text split
-into per-syllable chunk objects, then batch-render each chunk as a
-transparent 16-bit PNG for compositing in DaVinci Resolve (Fusion).
+A Blender add-on that automates the syllable-chunk pipeline for lyric /
+music video work: type delimited lyrics, get styled 3D text split into
+per-syllable chunk objects, batch-render each chunk as a full-frame
+transparent 16-bit PNG, and get a **JSON manifest per line** carrying
+every chunk's text, screen position, pixel bbox, and timing — the direct
+input for compositing in DaVinci Resolve (Fusion).
 
-Works on Blender 4.x and 5.x (tested against the 5.1 API).
+The product boundary: **stills out of Blender, plus (soon) a generated
+Fusion comp with timing already in place.** Animation and retiming stay
+in Fusion. See `docs/lyric_chunker_spec_addendum.md` for the full spec.
+
+Requires Blender **4.2 LTS or newer**.
+
+## v2 breaking changes
+
+This is a ground-up rewrite of the v1 single-file add-on:
+
+- **The delimiter is now `|` (configurable), not `-`.** Hyphens are
+  literal characters — `well-worn` renders as-is and never splits. The
+  old `\-` escape is gone.
+- Chunks are generated as **one Text object per chunk** (positioned by
+  prefix measurement) instead of mesh-island clustering. No mesh
+  conversion: chunks stay live, editable text, and extrude/bevel live on
+  the text data. The old ligature/glyph-count failure mode is gone.
+- Renders now write a `Line#.json` manifest next to the PNGs.
+- Packaged as a Blender **Extension** (`blender_manifest.toml`); the
+  single-file build on the downloads page is generated from it.
 
 ## Install
 
-1. Edit > Preferences > Add-ons
-2. Click the dropdown arrow (top right) > **Install from Disk…**
-   (in Blender 5.x this is the "legacy add-on" path — single `.py` files
-   install here, no zip needed)
-3. Pick `lyric_chunker.py`, enable **Lyric Chunker**
-4. The panel appears in the 3D Viewport sidebar (press `N`) under the
-   **Lyric Chunker** tab
+**Extension (recommended):** build the zip
+(`python3 scripts/build_single_file.py --zip dist/`) and install via
+Edit > Preferences > Get Extensions > Install from Disk.
+
+**Single file (dabingabongo.com/downloads):** Edit > Preferences >
+Add-ons > Install from Disk… and pick `lyric_chunker.py` (in Blender
+4.2+ this is the legacy add-on path).
+
+The panel appears in the 3D Viewport sidebar (`N`) under **Lyric
+Chunker**.
 
 ## Usage
 
-1. **Style once by hand:** create a text object, set its font, extrude,
-   bevel, material, scale, rotation, and position where the line should sit.
-   Pick it as the **Template** in the Style section. Every generated line
-   inherits all of it. (No template? Defaults are used at the 3D cursor and
-   the panel warns you.)
-2. **Type the line** with delimiters: `sala-zar has my boots`
-   - `-` splits syllables within a word
-   - space splits words (whole words are single chunks unless you add `-`)
-   - `\-` renders a literal hyphen without splitting
-3. **Generate Chunks.** You get objects `Line1_Chunk1` … `Line1_Chunk5` in a
-   `Line1` collection, each with its own center-of-mass origin. The line
-   number auto-increments for the next line. Re-generating an existing line
-   number replaces it.
-4. **Set the Output Root** and hit **Render Line N** (or **Render All
-   Lines**). Each chunk renders alone — everything else in your Line
-   collections is hidden for that frame — and saves to
-   `<output root>/Line1/Line1_Chunk1.png` (PNG, RGBA, 16-bit, transparent
-   film). Your scene's render output settings are restored afterward.
+1. **Set up the scene.** Either press **Set Up Scene** (creates a
+   camera, light, and template text object inside a `LyricChunker`
+   collection — never touches existing objects) or point the Template
+   and Camera pickers at your own hand-built setup. Style the template
+   once: font, extrude, bevel, material, scale, rotation, position.
+   Every generated chunk inherits all of it.
+2. **Type the lyrics.** Single line in the panel field, or press `+`
+   next to Lyrics to create a text datablock and edit multiple lines in
+   the Text Editor (one lyric line per row; blank rows are skipped).
+   `Some|thing wick|ed this way comes` → chunks `Some / thing / wick /
+   ed / this / way / comes`. The Start Index field lets rows map to
+   lines 12–20 without renumbering.
+3. **Generate.** One Text object per chunk lands in a `Line#`
+   collection, positioned so the chunks composite back into the full
+   line. Chunks are editable text — fix a typo by editing the object's
+   body, then **Re-render Chunk**.
+4. **Timing (optional).**
+   - **SRT import:** pick a subtitle file; entry N supplies line N's
+     start/end (content still comes from your delimited text, not the
+     SRT). Chunk starts are distributed across the line span, weighted
+     by chunk length.
+   - **Timeline markers:** load the song in the VSE, scrub, and tap `M`
+     along to the vocal. A marker named `Line1_Chunk1` binds to that
+     chunk directly (recommended); unnamed markers map to chunks in
+     order. **Markers win over SRT per chunk.**
+   - Timing is a scaffold — chunks get a start time only, and you
+     fine-tune in Fusion. No end times: hold-until-line-clears is a
+     comp-side decision.
+5. **Render.** Set the Output Root and hit **Render Line N** or **Render
+   All Lines**. Rendering runs as a cancellable queue with a progress
+   readout; each chunk renders alone, full-frame, transparent, 16-bit
+   PNG, to `<root>/Line1/Line1_Chunk1.png`, with `Line1.json` alongside.
+   Cancelling still writes a partial manifest for completed chunks. Your
+   render output settings are restored afterward.
+6. **Check the result.** **Contact Sheet** renders everything at low res
+   into one preview image before you commit to a full batch. **Verify
+   Line** renders the full line as a single text object, composites your
+   chunk PNGs, and diffs them — pass/fail lands in the manifest's
+   `verification` block (threshold in add-on preferences).
 
-The **Render Line** button targets, in order: the line of the currently
-active object (click any chunk to render its line), otherwise the last line
-you generated, otherwise the Line Number field.
+## The manifest
 
-## Notes
+One JSON file per line (`manifest_version: 1`), consumed by the future
+Fusion comp generator and safe to build on. Highlights:
 
-- **Force Uppercase** (default on) uppercases the text before generating —
-  matches the project's visual style and keeps glyph detection robust
-  (lowercase i/j dots are separate mesh islands).
-- **Zero-pad Numbers** switches naming to `Line01_Chunk01`. Default off to
-  match the existing Resolve bins.
-- A hidden `_LyricBackups` collection keeps an untouched copy of each line's
-  original text object (`Line#_source`) in case you need to re-style or
-  regenerate later.
-- Chunk detection clusters mesh islands by X overlap, so dotted/accented
-  glyphs stay whole. If a font's ligatures merge letters (or a glyph like a
-  straight double-quote splits oddly), generation fails with a clear error
-  instead of mis-splitting — try a different font or rewording.
-- Film > Transparent is enabled automatically at render time if it's off
-  (noted in the Status box).
-- The template object is hidden from renders automatically during a batch,
-  then restored.
+- `start_seconds` is canonical timing; `start_frame` is derived
+  convenience.
+- `bbox_px` is `[x_min, y_min, x_max, y_max]` in pixels with **origin at
+  bottom-left** (matches Blender's camera view and Fusion — most image
+  libraries are top-left, so flip accordingly).
+- `manual_offset_x` records your viewport nudges separately from the
+  computed offset, so regeneration doesn't clobber corrections.
+- `song.json` at the output root is reserved — don't put anything there.
+
+## Known limitations
+
+- **Cross-boundary kerning:** the offset measurement captures the
+  kerning pair straddling a chunk boundary, but the glyphs live in
+  separate objects, so aggressive kerning tables on display faces can
+  still drift visibly. Use **Verify Line** to check your exact font, and
+  nudge chunks manually if needed (recorded as `manual_offset_x`).
+- **No non-Latin script support:** splitting assumes whitespace word
+  separation, which does not hold for CJK.
+- No animation or keyframing inside Blender — timing lives in Fusion.
+- No automatic syllable detection from audio — input is hand-delimited.
 
 ## Dev loop
 
-Open `lyric_chunker.py` in Blender's Text Editor and hit Run Script to
-re-register after edits (the script unregisters itself first, so re-running
-is safe). For headless render tests:
+The canonical source is the `lyric_chunker/` package. For quick
+iteration, build the flat file and run it from Blender's Text Editor
+(it unregisters itself first, so re-running is safe):
 
 ```
-blender --background scene.blend --python lyric_chunker.py
+python3 scripts/build_single_file.py --out build/lyric_chunker.py
 ```
 
-Pure logic (line parsing, glyph clustering) has no `bpy` dependency and can
-be unit-tested outside Blender.
+Pure logic (splitting, SRT parsing, timing distribution, manifest,
+marker matching) has no `bpy` dependency:
+
+```
+python3 -m pytest tests/
+```
 
 ## Releasing
 
-Every push to `main` that changes `lyric_chunker.py` triggers the
-`sync-downloads` GitHub Action, which copies the file into the Dabingabongo
-repo's `/downloads/` folder and refreshes its `downloads.json` entry
-(version from `bl_info`, size, date — plus a changelog entry when the
-version changed, using the commit subject as the note). Bump the `bl_info`
-version when the change is worth a changelog line. The push to Dabingabongo
-`main` kicks off its Netlify deploy, so the live downloads page updates on
-its own. The action needs a `LYRIC_CHUNKER_SYNC` repo secret (a
-fine-grained PAT with Contents read/write on `mikeyd433/Dabingabongo`).
+Every push to `main` that changes `lyric_chunker/` triggers the
+`sync-downloads` GitHub Action: it runs the tests, builds the
+single-file add-on, and copies it into the Dabingabongo repo's
+`/downloads/` folder, refreshing its `downloads.json` entry (version
+from the generated `bl_info`, which mirrors `blender_manifest.toml` —
+the build fails if they disagree). Bump the version in **both**
+`lyric_chunker/blender_manifest.toml` and `ADDON_VERSION` in
+`lyric_chunker/manifest.py` when the change is worth a changelog line.
+The push to Dabingabongo `main` kicks off its Netlify deploy. The action
+needs a `LYRIC_CHUNKER_SYNC` repo secret (a fine-grained PAT with
+Contents read/write on `mikeyd433/Dabingabongo`).
+
+The Superhive product ships as an Extension zip:
+`python3 scripts/build_single_file.py --zip dist/`.
+
+## Roadmap
+
+Fusion comp generation (`lyric_chunker/comp/`) is the core roadmap item,
+gated on the §7 comp-target research in the spec addendum — the
+MediaIn/Loader question must be answered in Resolve itself before any
+generator code is written.
