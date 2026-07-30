@@ -23,7 +23,7 @@ from .ops_render import (
     load_pixels,
     now_utc_iso,
 )
-from .ops_setup import default_material
+from .ops_setup import apply_house_style, default_material, load_house_font
 from .properties import active_camera, set_status, verify_threshold
 from .splitting import full_text, split_line
 
@@ -49,8 +49,10 @@ def build_full_line_object(context, coll, props):
         for mat in mats or [default_material()]:
             curve.materials.append(mat)
     else:
-        curve.extrude = 0.03
-        curve.bevel_depth = 0.005
+        apply_house_style(curve)
+        font = load_house_font()
+        if font is not None:
+            curve.font = font
         curve.materials.append(default_material())
 
     obj = bpy.data.objects.new(VERIFY_TEMP_NAME, curve)

@@ -33,6 +33,8 @@ FONT_METRIC_ATTRS = (
     "shear",
     "space_character",
     "space_word",
+    "space_line",
+    "small_caps_scale",
     "resolution_u",
     "extrude",
     "bevel_depth",

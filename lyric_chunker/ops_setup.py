@@ -22,8 +22,9 @@ MATERIAL_NAME = "LC_White"
 
 
 def default_material():
-    """Flat, tintable white. Emission-based so renders are lighting-
-    independent and tint cleanly in Fusion."""
+    """White Principled BSDF matching the project's house material:
+    metallic 0, roughness 0.5, alpha 1 — lit by the scene, tinted in
+    Fusion."""
     mat = bpy.data.materials.get(MATERIAL_NAME)
     if mat is None:
         mat = bpy.data.materials.new(MATERIAL_NAME)
@@ -32,12 +33,47 @@ def default_material():
         bsdf = nodes.get("Principled BSDF")
         if bsdf is not None:
             bsdf.inputs["Base Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+            bsdf.inputs["Metallic"].default_value = 0.0
             bsdf.inputs["Roughness"].default_value = 0.5
-            if "Emission Color" in bsdf.inputs:
-                bsdf.inputs["Emission Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-            if "Emission Strength" in bsdf.inputs:
-                bsdf.inputs["Emission Strength"].default_value = 1.0
     return mat
+
+
+# The project's house style (from the reference Text object): Georgia
+# Bold Italic, extrude 0.12, round bevel 0.03 @ resolution 4, character
+# spacing 1.1, word spacing 1.4, Left / Top Baseline alignment.
+HOUSE_STYLE = {
+    "extrude": 0.12,
+    "bevel_depth": 0.03,
+    "bevel_resolution": 4,
+    "space_character": 1.1,
+    "space_word": 1.4,
+    "align_x": 'LEFT',
+    "align_y": 'TOP_BASELINE',
+}
+
+# Where Georgia Bold Italic usually lives, per platform. If none of
+# these resolve, the template falls back to Blender's built-in font and
+# the operator says so — the style is otherwise identical.
+HOUSE_FONT_CANDIDATES = (
+    "C:\\Windows\\Fonts\\georgiaz.ttf",
+    "/System/Library/Fonts/Supplemental/Georgia Bold Italic.ttf",
+    "/Library/Fonts/Georgia Bold Italic.ttf",
+    "/usr/share/fonts/truetype/msttcorefonts/Georgia_Bold_Italic.ttf",
+)
+
+
+def load_house_font():
+    for path in HOUSE_FONT_CANDIDATES:
+        try:
+            return bpy.data.fonts.load(path, check_existing=True)
+        except RuntimeError:
+            continue
+    return None
+
+
+def apply_house_style(curve):
+    for attr, value in HOUSE_STYLE.items():
+        setattr(curve, attr, value)
 
 
 def _setup_collection(context):
@@ -95,10 +131,16 @@ class LC_OT_setup_scene(Operator):
         if template is None:
             curve = bpy.data.curves.new(TEMPLATE_NAME, type='FONT')
             curve.body = "TEMPLATE"
-            curve.extrude = 0.03
-            curve.bevel_depth = 0.005
-            curve.align_x = 'CENTER'
-            curve.align_y = 'BOTTOM_BASELINE'
+            apply_house_style(curve)
+            font = load_house_font()
+            if font is not None:
+                curve.font = font
+            else:
+                notes.append(
+                    "Georgia Bold Italic not found on this machine — "
+                    "template uses the built-in font; pick yours in the "
+                    "Font panel"
+                )
             curve.materials.append(default_material())
             template = bpy.data.objects.new(TEMPLATE_NAME, curve)
             template.location = (0.0, 0.0, 0.0)

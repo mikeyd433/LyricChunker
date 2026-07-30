@@ -13,7 +13,7 @@ from mathutils import Vector
 
 from .manifest import chunk_name, line_dirname
 from .measure import copy_font_metrics, measure_layout
-from .ops_setup import default_material
+from .ops_setup import apply_house_style, default_material, load_house_font
 from .properties import set_status
 from .splitting import flat_chunks, parse_block, split_line
 
@@ -94,8 +94,10 @@ def apply_template_style(text_data, template):
         for mat in mats or [default_material()]:
             text_data.materials.append(mat)
     else:
-        text_data.extrude = 0.03
-        text_data.bevel_depth = 0.005
+        apply_house_style(text_data)
+        font = load_house_font()
+        if font is not None:
+            text_data.font = font
         text_data.materials.append(default_material())
     text_data.align_x = 'LEFT'
     text_data.align_y = 'BOTTOM_BASELINE'

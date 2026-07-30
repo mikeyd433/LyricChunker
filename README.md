@@ -46,7 +46,11 @@ Chunker**.
 1. **Set up the scene.** Either press **Set Up Scene** (creates a
    camera, light, and template text object inside a `LyricChunker`
    collection — never touches existing objects) or point the Template
-   and Camera pickers at your own hand-built setup. Style the template
+   and Camera pickers at your own hand-built setup. The generated
+   template ships with the project house style: Georgia Bold Italic
+   (when the font is found on your machine), extrude 0.12, round bevel
+   0.03 @ resolution 4, character spacing 1.1, word spacing 1.4, white
+   Principled material. Style the template
    once: font, extrude, bevel, material, scale, rotation, position.
    Every generated chunk inherits all of it.
 2. **Type the lyrics.** Single line in the panel field, or press `+`
