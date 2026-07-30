@@ -147,9 +147,27 @@ Contents read/write on `mikeyd433/Dabingabongo`).
 The Superhive product ships as an Extension zip:
 `python3 scripts/build_single_file.py --zip dist/`.
 
-## Roadmap
+## Fusion comp generation (experimental)
 
-Fusion comp generation (`lyric_chunker/comp/`) is the core roadmap item,
-gated on the §7 comp-target research in the spec addendum — the
-MediaIn/Loader question must be answered in Resolve itself before any
-generator code is written.
+`scripts/generate_comp.py` turns each `Line#.json` manifest into a
+pasteable Fusion node graph (`Line#.setting`) replicating the reference
+lyric-video look: per chunk, `Loader → ColorGain → Transform` merged in
+order, with a one-frame white→orange flip (Gain G/B 1.0→0.4/0.05) and a
+PolyPath bounce (Center Y dips 0.015, frames S/S+1/S+4) keyed at each
+chunk's manifest start frame, in line-local time.
+
+```
+python3 scripts/generate_comp.py <output_root>            # all lines
+python3 scripts/generate_comp.py Line16/Line16.json --clip-dir "C:\path\Line 16"
+```
+
+Open the `.setting` in a text editor, copy all, click an empty spot in
+the Fusion node area, paste, and wire the last Merge to MediaOut.
+Highlight color and bounce are tunable via `--highlight`, `--dip-depth`,
+`--dip-in`, `--dip-out`.
+
+**Experimental:** generated graphs use Loader nodes (Media Pool IDs
+can't be fabricated from outside Resolve). Whether pasted Loaders
+render on the Fusion page must be verified per install — if they don't,
+paste still works for everything downstream; connect MediaIn nodes to
+the ColorGains by hand.

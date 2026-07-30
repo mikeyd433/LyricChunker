@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""Generate pasteable Fusion node graphs from Lyric Chunker manifests.
+
+For each Line#.json manifest, writes a Line#.setting next to it (or to
+--out-dir). Open the .setting in a text editor, copy everything, click
+an empty spot in the Fusion node area, and paste — the chunk graph
+appears with color-flip and bounce keyframed from the manifest timing.
+Wire the last Merge to MediaOut to finish.
+
+Usage:
+    python3 scripts/generate_comp.py <output_root_or_manifest> [more...]
+    python3 scripts/generate_comp.py Line16/Line16.json --clip-dir "C:\\path\\Line 16"
+
+--clip-dir sets the folder Loader nodes point at, for when the comp
+runs on a different machine than the one that rendered (paths are baked
+into the Loaders). Defaults to each manifest's own folder.
+"""
+
+import argparse
+import importlib.util
+import sys
+from pathlib import Path
+
+_PACKAGE_DIR = Path(__file__).resolve().parent.parent / "lyric_chunker"
+
+
+def _load(name, relpath):
+    # Loaded by file path so importing never touches the package
+    # __init__, which needs Blender's bpy.
+    spec = importlib.util.spec_from_file_location(name, _PACKAGE_DIR / relpath)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_gen = _load("lc_settings_gen", "comp/settings_gen.py")
+_manifest = _load("lc_manifest", "manifest.py")
+
+DEFAULT_DIP_DEPTH = _gen.DEFAULT_DIP_DEPTH
+DEFAULT_DIP_IN = _gen.DEFAULT_DIP_IN
+DEFAULT_DIP_OUT = _gen.DEFAULT_DIP_OUT
+DEFAULT_HIGHLIGHT_GAIN = _gen.DEFAULT_HIGHLIGHT_GAIN
+generate_line_setting = _gen.generate_line_setting
+read_manifest = _manifest.read_manifest
+
+
+def find_manifests(paths):
+    for raw in paths:
+        path = Path(raw)
+        if path.is_dir():
+            found = sorted(path.glob("Line*/Line*.json")) or sorted(
+                path.glob("Line*.json")
+            )
+            if not found:
+                sys.exit(f"no Line#.json manifests under {path}")
+            yield from found
+        else:
+            yield path
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("paths", nargs="+",
+                    help="Line#.json manifest(s), or an output root to scan")
+    ap.add_argument("--out-dir", type=Path,
+                    help="write .setting files here (default: next to each manifest)")
+    ap.add_argument("--clip-dir",
+                    help="folder the Loader nodes read PNGs from "
+                         "(default: each manifest's folder)")
+    ap.add_argument("--highlight", nargs=3, type=float, metavar=("R", "G", "B"),
+                    default=list(DEFAULT_HIGHLIGHT_GAIN),
+                    help="highlight gain, default 1.0 0.4 0.05 (the orange)")
+    ap.add_argument("--dip-depth", type=float, default=DEFAULT_DIP_DEPTH,
+                    help="bounce depth in normalized frame height, default 0.015")
+    ap.add_argument("--dip-in", type=int, default=DEFAULT_DIP_IN,
+                    help="frames from chunk start to full dip/color, default 1")
+    ap.add_argument("--dip-out", type=int, default=DEFAULT_DIP_OUT,
+                    help="frames to recover from the dip, default 3")
+    args = ap.parse_args()
+
+    for manifest_path in find_manifests(args.paths):
+        doc = read_manifest(manifest_path)
+        clip_dir = args.clip_dir or str(manifest_path.parent)
+        text, warnings = generate_line_setting(
+            doc,
+            clip_dir,
+            highlight=tuple(args.highlight),
+            dip_depth=args.dip_depth,
+            dip_in=args.dip_in,
+            dip_out=args.dip_out,
+        )
+        out_dir = args.out_dir or manifest_path.parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out = out_dir / (manifest_path.stem + ".setting")
+        out.write_text(text, encoding="utf-8")
+        print(f"wrote {out} ({len(doc['chunks'])} chunks)")
+        for w in warnings:
+            print(f"  warning: {w}")
+    print(
+        "\nPaste into Fusion: open the .setting in a text editor, copy all, "
+        "click an empty spot in the node area, Ctrl+V, then wire the last "
+        "Merge to MediaOut."
+    )
+
+
+if __name__ == "__main__":
+    main()
