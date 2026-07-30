@@ -16,7 +16,7 @@ MANIFEST_VERSION = 1
 # Single source of truth for the add-on version; blender_manifest.toml
 # must match (the single-file build script asserts it).
 ADDON_ID = "lyric_chunker"
-ADDON_VERSION = "2.2.1"
+ADDON_VERSION = "2.3.0"
 
 RESERVED_FILENAMES = {"song.json"}
 

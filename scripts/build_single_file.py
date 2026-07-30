@@ -27,12 +27,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_DIR = REPO_ROOT / "lyric_chunker"
 
 # Concatenation order: every module appears after everything it imports.
+# comp/settings_gen is bpy-free and used by the Generate Fusion Comps
+# button, so it rides along in the flat add-on too.
 MODULE_ORDER = [
     "splitting",
     "manifest",
     "timing_srt",
     "timing_markers",
     "measure",
+    "comp/settings_gen",
     "properties",
     "presets",
     "ops_setup",
@@ -84,7 +87,33 @@ generate_comp.py — the Fusion comp generator (needs Python 3, nothing
   Open the .setting in a text editor, copy all, paste into the Fusion
   node area in DaVinci Resolve, and wire the last Merge to MediaOut.
 
+Generate Comps.bat — no-terminal way to run the generator: drag your
+  render output folder onto the .bat (or double-click it and paste the
+  path when asked). The add-on's "Generate Fusion Comps" panel button
+  does the same thing from inside Blender.
+
 Docs: https://github.com/mikeyd433/LyricChunker
+"""
+
+BUNDLE_BAT = """\
+@echo off
+setlocal
+rem Drag your Lyric Chunker output folder onto this file to generate
+rem pasteable Fusion comps (Line#.setting) next to every Line#.json.
+if "%~1"=="" (
+    echo Drag your render output folder onto this .bat to generate comps.
+    set /p TARGET=Or paste the folder path here and press Enter:
+) else (
+    set "TARGET=%~1"
+)
+where python >nul 2>nul
+if %errorlevel%==0 (
+    python "%~dp0generate_comp.py" "%TARGET%"
+) else (
+    py "%~dp0generate_comp.py" "%TARGET%"
+)
+echo.
+pause
 """
 
 
@@ -204,6 +233,7 @@ def build_bundle(bundle_path, addon_source, comp_source, meta):
     entries = [
         ("lyric_chunker.py", addon_source),
         ("generate_comp.py", comp_source),
+        ("Generate Comps.bat", BUNDLE_BAT.replace("\n", "\r\n")),
         ("README.txt", BUNDLE_README),
     ]
     with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as zf:

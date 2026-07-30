@@ -8,6 +8,7 @@ strategy (§6.4) is a one-function swap.
 """
 
 import datetime
+import glob
 import os
 
 import bpy
@@ -25,6 +26,7 @@ from .manifest import (
     seconds_to_frame,
     write_manifest,
 )
+from .comp.settings_gen import generate_line_setting
 from .ops_generate import (
     collect_line_chunks,
     find_line_collection,
@@ -623,6 +625,68 @@ class LC_OT_rerender_chunk(Operator):
         if notes:
             message += f" ({'; '.join(notes)})"
         set_status(context, message)
+        return {'FINISHED'}
+
+
+# ---------------------------------------------------------------------------
+# Fusion comp generation (§6) — same generator as scripts/generate_comp.py,
+# run against the output root without leaving Blender.
+# ---------------------------------------------------------------------------
+
+class LC_OT_generate_comps(Operator):
+    bl_idname = "lyric_chunker.generate_comps"
+    bl_label = "Generate Fusion Comps"
+    bl_description = (
+        "Write a pasteable Fusion node graph (Line#.setting) next to every "
+        "rendered line manifest in the output root — open one in a text "
+        "editor, copy all, and paste into Resolve's Fusion node area"
+    )
+
+    def fail(self, context, message):
+        set_status(context, message, error=True)
+        self.report({'ERROR'}, message)
+        return {'CANCELLED'}
+
+    def execute(self, context):
+        props = context.scene.lyric_chunker
+        if not props.output_root:
+            return self.fail(context, "Set an output root folder first")
+        out_root = bpy.path.abspath(props.output_root)
+        manifests = sorted(glob.glob(os.path.join(out_root, "Line*", "Line*.json")))
+        if not manifests:
+            return self.fail(
+                context,
+                f"No Line#.json manifests under {out_root} — render lines first",
+            )
+
+        written = 0
+        warned = []
+        for path in manifests:
+            try:
+                doc = read_manifest(path)
+            except (ValueError, OSError) as exc:
+                warned.append(f"{os.path.basename(path)}: {exc}")
+                continue
+            folder = os.path.dirname(path)
+            text, warnings = generate_line_setting(doc, folder)
+            warned.extend(warnings)
+            setting_path = os.path.splitext(path)[0] + ".setting"
+            try:
+                with open(setting_path, "w", encoding="utf-8") as fh:
+                    fh.write(text)
+            except OSError as exc:
+                return self.fail(context, f"Cannot write {setting_path}: {exc}")
+            written += 1
+
+        message = (
+            f"Wrote {written} .setting file(s) — open in a text editor, copy "
+            "all, paste into Fusion, wire the last Merge to MediaOut"
+        )
+        if warned:
+            message += f" — {len(warned)} warning(s), see console"
+            for w in warned:
+                self.report({'WARNING'}, w)
+        set_status(context, message, error=written == 0)
         return {'FINISHED'}
 
 

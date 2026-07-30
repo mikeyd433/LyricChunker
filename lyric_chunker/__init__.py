@@ -13,6 +13,7 @@ from .ops_generate import (
 from .ops_render import (
     LC_OT_cancel_render,
     LC_OT_contact_sheet,
+    LC_OT_generate_comps,
     LC_OT_render_queue,
     LC_OT_rerender_chunk,
 )
@@ -47,6 +48,7 @@ classes = (
     LC_OT_render_queue,
     LC_OT_cancel_render,
     LC_OT_rerender_chunk,
+    LC_OT_generate_comps,
     LC_OT_verify_line,
     LC_OT_contact_sheet,
     LC_OT_preset_save,

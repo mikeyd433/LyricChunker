@@ -15,6 +15,7 @@ from .ops_generate import (
 from .ops_render import (
     LC_OT_cancel_render,
     LC_OT_contact_sheet,
+    LC_OT_generate_comps,
     LC_OT_render_queue,
     LC_OT_rerender_chunk,
 )
@@ -152,6 +153,9 @@ class LC_PT_panel(Panel):
             row = box.row(align=True)
             row.operator(LC_OT_verify_line.bl_idname, icon='CHECKMARK')
             row.operator(LC_OT_contact_sheet.bl_idname, icon='IMAGE_DATA')
+            row = box.row()
+            row.scale_y = 1.3
+            row.operator(LC_OT_generate_comps.bl_idname, icon='NODETREE')
 
         box = layout.box()
         icon = 'ERROR' if props.status_error else 'INFO'
