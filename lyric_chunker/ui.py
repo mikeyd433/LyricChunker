@@ -1,5 +1,7 @@
 """Panel (3D Viewport sidebar > Lyric Chunker)."""
 
+import textwrap
+
 from bpy.types import Panel, UIList
 
 from .ops_generate import (
@@ -25,9 +27,11 @@ from .properties import status_lines
 class LC_UL_lyric_lines(UIList):
     def draw_item(self, context, layout, data, item, icon, active_data,
                   active_prop, index):
-        row = layout.row(align=True)
-        row.label(text=f"Line {data.start_index + index}")
-        row.prop(item, "text", text="", emboss=False)
+        # Number-only label keeps most of the row width for the text;
+        # the full selected line is drawn wrapped under the list.
+        split = layout.split(factor=0.15)
+        split.label(text=str(data.start_index + index))
+        split.prop(item, "text", text="", emboss=False)
 
 
 class LC_PT_panel(Panel):
@@ -62,6 +66,16 @@ class LC_PT_panel(Panel):
             )
             col = row.column(align=True)
             col.operator(LC_OT_remove_line.bl_idname, text="", icon='REMOVE')
+            index = props.lyric_line_index
+            if 0 <= index < len(props.lyric_lines):
+                full = props.lyric_lines[index].text
+                view = box.column(align=True)
+                view.scale_y = 0.85
+                wrapped = textwrap.wrap(
+                    f"Line {props.start_index + index}:  {full}", width=42
+                ) or [""]
+                for text_row in wrapped[:6]:
+                    view.label(text=text_row)
         row = box.row(align=True)
         row.prop(props, "start_index")
         if not has_list:
