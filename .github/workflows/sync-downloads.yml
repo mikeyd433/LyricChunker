@@ -17,6 +17,7 @@ on:
     paths:
       - lyric_chunker/**
       - scripts/build_single_file.py
+      - scripts/generate_comp.py
       - scripts/sync_downloads.py
   workflow_dispatch:
 
@@ -39,14 +40,18 @@ jobs:
           python3 -m pip install --quiet pytest
           python3 -m pytest tests/ -q
 
-      - name: Build single-file add-on
-        run: python3 scripts/build_single_file.py --out build/lyric_chunker.py
+      - name: Build single-file add-on and bundle
+        run: |
+          python3 scripts/build_single_file.py \
+            --out build/lyric_chunker.py \
+            --bundle build/lyric_chunker_bundle.zip
 
-      - name: Update download file and manifest
+      - name: Update download files and manifest
         env:
           COMMIT_SUBJECT: ${{ github.event.head_commit.message }}
         run: |
           python3 scripts/sync_downloads.py build/lyric_chunker.py site \
+            --bundle build/lyric_chunker_bundle.zip \
             --note "$COMMIT_SUBJECT" \
             --commit-sha "$GITHUB_SHA"
 
@@ -55,7 +60,7 @@ jobs:
           cd site
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add downloads/lyric_chunker.py downloads.json
+          git add downloads/lyric_chunker.py downloads/lyric_chunker_bundle.zip downloads.json
           if git diff --cached --quiet; then
             echo "Downloads page already up to date."
             exit 0

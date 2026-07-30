@@ -30,6 +30,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("addon", help="path to lyric_chunker.py")
     ap.add_argument("site", help="path to the Dabingabongo checkout")
+    ap.add_argument("--bundle", help="path to lyric_chunker_bundle.zip")
     ap.add_argument("--note", default="", help="changelog note (commit subject)")
     ap.add_argument("--commit-sha", default="", help="LyricChunker commit sha")
     args = ap.parse_args()
@@ -39,7 +40,6 @@ def main():
     manifest_path = site / "downloads.json"
 
     version = parse_version(addon.read_text(encoding="utf-8"))
-    size_kb = max(1, round(addon.stat().st_size / 1024))
     today = datetime.date.today().isoformat()
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -49,24 +49,31 @@ def main():
     if item is None:
         raise SystemExit(f'no item with "id": "{ITEM_ID}" in {manifest_path}')
 
-    dest = site / "downloads" / "lyric_chunker.py"
-    if (
-        dest.exists()
-        and dest.read_bytes() == addon.read_bytes()
-        and item.get("version") == version
-    ):
+    # (artifact source, destination name) pairs shipped to the site.
+    artifacts = [(addon, "lyric_chunker.py")]
+    if args.bundle:
+        artifacts.append((Path(args.bundle), "lyric_chunker_bundle.zip"))
+
+    downloads_dir = site / "downloads"
+    unchanged = item.get("version") == version and all(
+        (downloads_dir / name).exists()
+        and (downloads_dir / name).read_bytes() == src.read_bytes()
+        for src, name in artifacts
+    )
+    if unchanged:
         print(f"already in sync at v{version} — nothing to update")
         return
 
-    dest.parent.mkdir(exist_ok=True)
-    shutil.copyfile(addon, dest)
-
+    downloads_dir.mkdir(exist_ok=True)
     previous = item.get("version")
     item["version"] = version
     item["updated"] = today
-    for d in item.get("downloads", []):
-        if d.get("url", "").endswith("lyric_chunker.py"):
-            d["size"] = f"{size_kb} KB"
+    for src, name in artifacts:
+        shutil.copyfile(src, downloads_dir / name)
+        size_kb = max(1, round(src.stat().st_size / 1024))
+        for d in item.get("downloads", []):
+            if d.get("url", "").endswith(name):
+                d["size"] = f"{size_kb} KB"
 
     if version != previous:
         note = args.note.strip().splitlines()[0].strip() if args.note.strip() else ""
@@ -80,7 +87,8 @@ def main():
     manifest_path.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    print(f"synced v{version} ({size_kb} KB), manifest previously at v{previous}")
+    shipped = ", ".join(name for _, name in artifacts)
+    print(f"synced v{version} ({shipped}), manifest previously at v{previous}")
 
 
 if __name__ == "__main__":

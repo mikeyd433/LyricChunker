@@ -21,6 +21,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+# --- repo-load --- (this whole section is replaced by inlined modules
+# in the self-contained single-file build)
 _PACKAGE_DIR = Path(__file__).resolve().parent.parent / "lyric_chunker"
 
 
@@ -43,6 +45,7 @@ DEFAULT_DIP_OUT = _gen.DEFAULT_DIP_OUT
 DEFAULT_HIGHLIGHT_GAIN = _gen.DEFAULT_HIGHLIGHT_GAIN
 generate_line_setting = _gen.generate_line_setting
 read_manifest = _manifest.read_manifest
+# --- end repo-load ---
 
 
 def find_manifests(paths):

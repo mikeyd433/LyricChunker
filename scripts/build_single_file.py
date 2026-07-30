@@ -60,6 +60,33 @@ if __name__ == "__main__":
     register()
 '''
 
+# Modules inlined into the self-contained comp generator, in
+# dependency order.
+COMP_MODULES = ["manifest", "comp/settings_gen"]
+
+REPO_LOAD_START = "# --- repo-load ---"
+REPO_LOAD_END = "# --- end repo-load ---"
+
+BUNDLE_README = """\
+Lyric Chunker bundle
+====================
+
+lyric_chunker.py — the Blender add-on. Install via Edit > Preferences >
+  Add-ons > Install from Disk. Renders per-syllable chunk PNGs plus a
+  Line#.json timing manifest per line.
+
+generate_comp.py — the Fusion comp generator (needs Python 3, nothing
+  else). Feed it the add-on's output and it writes a pasteable
+  Line#.setting node graph per line:
+
+      python generate_comp.py "C:\\path\\to\\output_root"
+
+  Open the .setting in a text editor, copy all, paste into the Fusion
+  node area in DaVinci Resolve, and wire the last Merge to MediaOut.
+
+Docs: https://github.com/mikeyd433/LyricChunker
+"""
+
 
 def read_toml_meta():
     with open(PACKAGE_DIR / "blender_manifest.toml", "rb") as fh:
@@ -141,6 +168,52 @@ def build_flat_source():
     return flat, meta
 
 
+def build_comp_source():
+    """Flatten generate_comp.py into a self-contained script: the
+    repo-load section is replaced by the inlined manifest and
+    settings_gen modules, so it runs anywhere with plain Python 3."""
+    cli = (REPO_ROOT / "scripts" / "generate_comp.py").read_text(encoding="utf-8")
+    start = cli.index(REPO_LOAD_START)
+    end = cli.index(REPO_LOAD_END) + len(REPO_LOAD_END)
+    inlined = []
+    for name in COMP_MODULES:
+        source = (PACKAGE_DIR / f"{name}.py").read_text(encoding="utf-8")
+        inlined.append(
+            f"# ===== {name}.py "
+            + "=" * max(0, 56 - len(name))
+            + "\n\n"
+            + strip_relative_imports(source)
+        )
+    flat = (
+        HEADER
+        + cli[:start]
+        + "\n\n".join(inlined)
+        + cli[end:]
+    )
+    compile(flat, "generate_comp.py", "exec")
+    if re.search(r"^from \.", flat, re.MULTILINE):
+        sys.exit("relative import survived comp flattening")
+    return flat
+
+
+def build_bundle(bundle_path, addon_source, comp_source, meta):
+    """Zip the flattened add-on and comp generator together. Fixed
+    timestamps keep the archive byte-stable for unchanged inputs."""
+    bundle_path.parent.mkdir(parents=True, exist_ok=True)
+    stamp = (2020, 1, 1, 0, 0, 0)
+    entries = [
+        ("lyric_chunker.py", addon_source),
+        ("generate_comp.py", comp_source),
+        ("README.txt", BUNDLE_README),
+    ]
+    with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content in entries:
+            info = zipfile.ZipInfo(name, date_time=stamp)
+            info.external_attr = 0o644 << 16
+            zf.writestr(info, content)
+    return bundle_path
+
+
 def build_zip(dist_dir, meta):
     """Extension zip: blender_manifest.toml and modules at the zip root."""
     dist_dir.mkdir(parents=True, exist_ok=True)
@@ -158,16 +231,29 @@ def build_zip(dist_dir, meta):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, help="write the flattened single-file add-on here")
+    ap.add_argument("--comp-out", type=Path,
+                    help="write the self-contained comp generator here")
+    ap.add_argument("--bundle", type=Path,
+                    help="write a zip bundling the add-on + comp generator here")
     ap.add_argument("--zip", type=Path, help="also build the Extension zip into this directory")
     args = ap.parse_args()
-    if not args.out and not args.zip:
-        ap.error("nothing to do — pass --out and/or --zip")
+    if not any((args.out, args.comp_out, args.bundle, args.zip)):
+        ap.error("nothing to do — pass --out, --comp-out, --bundle, and/or --zip")
 
     flat, meta = build_flat_source()
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(flat, encoding="utf-8")
         print(f"wrote {args.out} ({len(flat.splitlines())} lines, v{meta['version']})")
+    if args.comp_out or args.bundle:
+        comp = build_comp_source()
+        if args.comp_out:
+            args.comp_out.parent.mkdir(parents=True, exist_ok=True)
+            args.comp_out.write_text(comp, encoding="utf-8")
+            print(f"wrote {args.comp_out} ({len(comp.splitlines())} lines)")
+        if args.bundle:
+            out = build_bundle(args.bundle, flat, comp, meta)
+            print(f"wrote {out}")
     if args.zip:
         out = build_zip(args.zip, meta)
         print(f"wrote {out}")

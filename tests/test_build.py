@@ -35,3 +35,30 @@ def test_flat_build_compiles_and_carries_bl_info():
 def test_versions_agree():
     meta = build.read_toml_meta()
     assert meta["version"] == build.package_addon_version()
+
+
+def test_comp_flattening_is_self_contained():
+    flat = build.build_comp_source()
+    compile(flat, "generate_comp.py", "exec")
+    # The repo-load section must be fully replaced by inlined modules.
+    assert "_PACKAGE_DIR" not in flat
+    assert "spec_from_file_location" not in flat
+    for name in ("def read_manifest", "def generate_line_setting", "def main"):
+        assert name in flat
+    assert "from ." not in flat
+
+
+def test_bundle_zip_contents(tmp_path):
+    import zipfile
+
+    flat, meta = build.build_flat_source()
+    comp = build.build_comp_source()
+    out = build.build_bundle(tmp_path / "bundle.zip", flat, comp, meta)
+    with zipfile.ZipFile(out) as zf:
+        assert sorted(zf.namelist()) == [
+            "README.txt", "generate_comp.py", "lyric_chunker.py",
+        ]
+        assert zf.read("lyric_chunker.py").decode() == flat
+    # Deterministic: rebuilding yields identical bytes.
+    again = build.build_bundle(tmp_path / "bundle2.zip", flat, comp, meta)
+    assert out.read_bytes() == again.read_bytes()
