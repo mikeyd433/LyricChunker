@@ -123,6 +123,7 @@ def _loader(name, filename, length, pos):
 \t\t\t}},
 \t\t\tInputs = {{
 \t\t\t\t["Gamut.SLogVersion"] = Input {{ Value = FuID {{ "SLog2" }}, }},
+\t\t\t\tPostMultiplyByAlpha = Input {{ Value = 1, }},
 \t\t\t}},
 \t\t\tViewInfo = OperatorInfo {{ Pos = {{ {_num(pos[0])}, {_num(pos[1])} }} }},
 \t\t}},
