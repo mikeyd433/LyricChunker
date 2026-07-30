@@ -155,10 +155,29 @@ def generate_line(context, line_no, raw_text, words, props):
 
 
 def parse_input_lines(props):
-    """Lines to generate from the panel state: the lyrics text block when
-    set (§5.3 multi-line), else the single-line field. Returns
-    (lines, warnings) with lines as (line_no, raw, words) tuples."""
-    if props.lyrics_text is not None:
+    """Lines to generate from the panel state, in priority order: the
+    panel lyric list, else an attached lyrics text block (§5.3), else
+    the single-line field. Returns (lines, warnings) with lines as
+    (line_no, raw, words) tuples."""
+    if len(props.lyric_lines):
+        lines = []
+        warnings = []
+        # List rows map 1:1 to numbers (start_index + row) so the panel
+        # labels, generate targets, and SRT mapping all agree — an empty
+        # row is skipped but keeps its number.
+        for row, item in enumerate(props.lyric_lines):
+            number = props.start_index + row
+            raw = item.text.strip()
+            if not raw:
+                warnings.append(f"Line {number}: empty row — skipped")
+                continue
+            words, w = split_line(raw, props.delimiter)
+            warnings.extend(f"Line {number}: {msg}" for msg in w)
+            if not words:
+                warnings.append(f"Line {number}: no chunks after splitting — skipped")
+                continue
+            lines.append((number, raw, words))
+    elif props.lyrics_text is not None:
         text = props.lyrics_text.as_string()
         lines, warnings = parse_block(text, props.delimiter, props.start_index)
     else:
@@ -206,13 +225,13 @@ class LC_OT_generate_chunks(Operator):
                 "Nothing to generate — enter a lyric line or pick a lyrics text",
             )
         if not self.all_lines:
-            if props.lyrics_text is not None:
+            if len(props.lyric_lines) or props.lyrics_text is not None:
                 wanted = props.line_number
                 lines = [entry for entry in lines if entry[0] == wanted]
                 if not lines:
                     return self.fail(
                         context,
-                        f"Line {wanted} is not in the lyrics text "
+                        f"Line {wanted} is not in the lyrics "
                         f"(rows start at {props.start_index})",
                     )
             # Single-line field mode already targets props.line_number.
@@ -228,7 +247,8 @@ class LC_OT_generate_chunks(Operator):
             replaced_any = replaced_any or replaced
             props.last_line = line_no
 
-        if props.lyrics_text is None and not self.all_lines:
+        if (not len(props.lyric_lines) and props.lyrics_text is None
+                and not self.all_lines):
             props.line_number = lines[-1][0] + 1
 
         message = f"Generated {len(lines)} line(s), {total_chunks} chunks"
@@ -239,6 +259,88 @@ class LC_OT_generate_chunks(Operator):
             for w in warnings:
                 self.report({'WARNING'}, w)
         set_status(context, message, error=False)
+        return {'FINISHED'}
+
+
+class LC_OT_add_line(Operator):
+    bl_idname = "lyric_chunker.add_line"
+    bl_label = "Add Line"
+    bl_description = (
+        "Add the typed lyric line to the list below, numbered after the "
+        "last entry"
+    )
+
+    def execute(self, context):
+        props = context.scene.lyric_chunker
+        raw = props.line_text.strip()
+        if not raw:
+            set_status(context, "Type a lyric line first", error=True)
+            self.report({'ERROR'}, "Type a lyric line first")
+            return {'CANCELLED'}
+        words, warnings = split_line(raw, props.delimiter)
+        if not words:
+            set_status(context, "Line has no chunks after splitting", error=True)
+            self.report({'ERROR'}, "Line has no chunks after splitting")
+            return {'CANCELLED'}
+        item = props.lyric_lines.add()
+        item.text = raw
+        props.lyric_line_index = len(props.lyric_lines) - 1
+        props.line_text = ""
+        number = props.start_index + len(props.lyric_lines) - 1
+        message = f"Added Line {number}: {raw}"
+        if warnings:
+            message += f" — {'; '.join(warnings)}"
+        set_status(context, message)
+        return {'FINISHED'}
+
+
+class LC_OT_remove_line(Operator):
+    bl_idname = "lyric_chunker.remove_line"
+    bl_label = "Remove Line"
+    bl_description = (
+        "Remove the selected line from the list (later rows shift down a "
+        "number, so regenerate them if already generated)"
+    )
+
+    def execute(self, context):
+        props = context.scene.lyric_chunker
+        index = props.lyric_line_index
+        if not (0 <= index < len(props.lyric_lines)):
+            return {'CANCELLED'}
+        removed = props.lyric_lines[index].text
+        props.lyric_lines.remove(index)
+        props.lyric_line_index = min(index, len(props.lyric_lines) - 1)
+        set_status(context, f"Removed line: {removed}")
+        return {'FINISHED'}
+
+
+class LC_OT_import_lines(Operator):
+    bl_idname = "lyric_chunker.import_lines"
+    bl_label = "Import Rows"
+    bl_description = (
+        "Append every non-empty row of the picked lyrics text block to "
+        "the line list (paste a whole song in the Text Editor, then pull "
+        "it in here)"
+    )
+
+    def execute(self, context):
+        props = context.scene.lyric_chunker
+        if props.lyrics_text is None:
+            set_status(context, "Pick a lyrics text block to import from", error=True)
+            self.report({'ERROR'}, "Pick a lyrics text block to import from")
+            return {'CANCELLED'}
+        added = 0
+        for raw in props.lyrics_text.as_string().splitlines():
+            if raw.strip():
+                item = props.lyric_lines.add()
+                item.text = raw.strip()
+                added += 1
+        if added:
+            props.lyric_line_index = len(props.lyric_lines) - 1
+        set_status(
+            context,
+            f"Imported {added} line(s) from '{props.lyrics_text.name}'",
+        )
         return {'FINISHED'}
 
 

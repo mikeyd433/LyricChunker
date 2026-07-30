@@ -3,7 +3,13 @@
 import bpy
 from bpy.props import PointerProperty
 
-from .ops_generate import LC_OT_generate_chunks, LC_OT_new_lyrics_text
+from .ops_generate import (
+    LC_OT_add_line,
+    LC_OT_generate_chunks,
+    LC_OT_import_lines,
+    LC_OT_new_lyrics_text,
+    LC_OT_remove_line,
+)
 from .ops_render import (
     LC_OT_cancel_render,
     LC_OT_contact_sheet,
@@ -19,18 +25,24 @@ from .presets import (
     LC_UL_style_presets,
 )
 from .properties import (
+    LCLyricLine,
     LCStylePreset,
     LyricChunkerPreferences,
     LyricChunkerProps,
 )
-from .ui import LC_PT_panel
+from .ui import LC_PT_panel, LC_UL_lyric_lines
 
 classes = (
+    LCLyricLine,
     LCStylePreset,
     LyricChunkerProps,
     LyricChunkerPreferences,
+    LC_UL_lyric_lines,
     LC_OT_setup_scene,
     LC_OT_generate_chunks,
+    LC_OT_add_line,
+    LC_OT_remove_line,
+    LC_OT_import_lines,
     LC_OT_new_lyrics_text,
     LC_OT_render_queue,
     LC_OT_cancel_render,

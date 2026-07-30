@@ -53,12 +53,15 @@ Chunker**.
    Principled material. Style the template
    once: font, extrude, bevel, material, scale, rotation, position.
    Every generated chunk inherits all of it.
-2. **Type the lyrics.** Single line in the panel field, or press `+`
-   next to Lyrics to create a text datablock and edit multiple lines in
-   the Text Editor (one lyric line per row; blank rows are skipped).
-   `Some|thing wick|ed this way comes` → chunks `Some / thing / wick /
-   ed / this / way / comes`. The Start Index field lets rows map to
-   lines 12–20 without renumbering.
+2. **Type the lyrics.** Type a line into the panel field and press `+`
+   (Add Line) — it lands in the line list below, labeled with its real
+   number (`Line 17`, `Line 18`, … following Start Index). Rows stay
+   editable in place; select a row to target it with the Generate/Render
+   Line N buttons. `Some|thing wick|ed this way comes` → chunks `Some /
+   thing / wick / ed / this / way / comes`. For pasting a whole song at
+   once, attach a text datablock (bottom row of the Lyrics box), edit it
+   in the Text Editor, and hit the import button to pull its rows into
+   the list.
 3. **Generate.** One Text object per chunk lands in a `Line#`
    collection, positioned so the chunks composite back into the full
    line. Chunks are editable text — fix a typo by editing the object's

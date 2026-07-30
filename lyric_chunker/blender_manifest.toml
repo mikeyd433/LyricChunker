@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "lyric_chunker"
-version = "2.1.0"
+version = "2.2.0"
 name = "Lyric Chunker"
 tagline = "Delimited lyrics to per-syllable stills with a timing manifest"
 maintainer = "Mikey D <michaeldumas433@gmail.com>"

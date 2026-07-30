@@ -1,8 +1,15 @@
 """Panel (3D Viewport sidebar > Lyric Chunker)."""
 
-from bpy.types import Panel
+from bpy.types import Panel, UIList
 
-from .ops_generate import LC_OT_generate_chunks, LC_OT_new_lyrics_text, get_target_line
+from .ops_generate import (
+    LC_OT_add_line,
+    LC_OT_generate_chunks,
+    LC_OT_import_lines,
+    LC_OT_new_lyrics_text,
+    LC_OT_remove_line,
+    get_target_line,
+)
 from .ops_render import (
     LC_OT_cancel_render,
     LC_OT_contact_sheet,
@@ -13,6 +20,14 @@ from .ops_setup import LC_OT_setup_scene
 from .ops_verify import LC_OT_verify_line
 from .presets import LC_OT_preset_apply, LC_OT_preset_remove, LC_OT_preset_save
 from .properties import status_lines
+
+
+class LC_UL_lyric_lines(UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data,
+                  active_prop, index):
+        row = layout.row(align=True)
+        row.label(text=f"Line {data.start_index + index}")
+        row.prop(item, "text", text="", emboss=False)
 
 
 class LC_PT_panel(Panel):
@@ -36,33 +51,45 @@ class LC_PT_panel(Panel):
         box = layout.box()
         box.label(text="Lyrics", icon='OUTLINER_OB_FONT')
         row = box.row(align=True)
-        row.prop(props, "lyrics_text", text="")
-        row.operator(LC_OT_new_lyrics_text.bl_idname, text="", icon='ADD')
-        if props.lyrics_text is None:
-            box.prop(props, "line_text", text="")
-        else:
-            box.label(text="Edit lines in the Text Editor", icon='INFO')
-            box.prop(props, "start_index")
+        row.prop(props, "line_text", text="", placeholder="Type a lyric line…")
+        row.operator(LC_OT_add_line.bl_idname, text="", icon='ADD')
+        has_list = len(props.lyric_lines) > 0
+        if has_list:
+            row = box.row()
+            row.template_list(
+                "LC_UL_lyric_lines", "", props, "lyric_lines",
+                props, "lyric_line_index", rows=4,
+            )
+            col = row.column(align=True)
+            col.operator(LC_OT_remove_line.bl_idname, text="", icon='REMOVE')
+        row = box.row(align=True)
+        row.prop(props, "start_index")
+        if not has_list:
+            row.prop(props, "line_number")
         row = box.row(align=True)
         row.prop(props, "delimiter")
-        row.prop(props, "line_number")
         box.prop(props, "force_uppercase")
         col = box.column(align=True)
         col.scale_y = 1.3
+        multi = has_list or props.lyrics_text is not None
         op = col.operator(
             LC_OT_generate_chunks.bl_idname,
-            text=f"Generate Line {props.line_number}"
-            if props.lyrics_text is not None else "Generate Chunks",
+            text=f"Generate Line {props.line_number}" if multi
+            else "Generate Chunks",
             icon='MOD_BUILD',
         )
         op.all_lines = False
-        if props.lyrics_text is not None:
+        if multi:
             op = col.operator(
                 LC_OT_generate_chunks.bl_idname,
                 text="Generate All Lines",
                 icon='MOD_BUILD',
             )
             op.all_lines = True
+        row = box.row(align=True)
+        row.prop(props, "lyrics_text", text="")
+        row.operator(LC_OT_new_lyrics_text.bl_idname, text="", icon='ADD')
+        row.operator(LC_OT_import_lines.bl_idname, text="", icon='IMPORT')
 
         box = layout.box()
         box.label(text="Timing", icon='TIME')

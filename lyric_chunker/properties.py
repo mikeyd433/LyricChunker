@@ -58,6 +58,17 @@ def _poll_font(self, obj):
     return obj.type == 'FONT'
 
 
+def _sync_selected_line(self, context):
+    """Keep line_number pointing at the selected list row so the
+    Generate/Render Line N buttons target what's highlighted."""
+    if 0 <= self.lyric_line_index < len(self.lyric_lines):
+        self.line_number = self.start_index + self.lyric_line_index
+
+
+class LCLyricLine(PropertyGroup):
+    text: StringProperty(name="Line", default="")
+
+
 class LCStylePreset(PropertyGroup):
     """Named style configuration captured from the template object (§5.2)."""
     name: StringProperty(name="Name", default="Preset")
@@ -101,15 +112,18 @@ class LyricChunkerProps(PropertyGroup):
         default=DEFAULT_DELIMITER,
         maxlen=8,
     )
+    lyric_lines: CollectionProperty(type=LCLyricLine)
+    lyric_line_index: IntProperty(default=0, update=_sync_selected_line)
     start_index: IntProperty(
         name="Start Index",
         description=(
-            "Line number of the first row in the lyrics text, so lines "
+            "Line number of the first row in the lyrics list, so lines "
             "12-20 can be rendered without renumbering (also offsets SRT "
             "entry mapping)"
         ),
         default=1,
         min=1,
+        update=_sync_selected_line,
     )
     line_number: IntProperty(
         name="Line Number",
