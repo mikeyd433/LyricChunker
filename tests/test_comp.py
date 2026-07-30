@@ -97,6 +97,12 @@ def test_generated_setting_structure():
     assert 'ActiveTool = "Merge_Line16_3"' in text
     # Windows path escaped for Lua.
     assert "C:\\\\renders\\\\Line 16\\\\Line16_Chunk1.png" in text
+    # Fusion sequence-detects the numbered PNGs; each Loader pins its
+    # own frame of the sequence by trim index.
+    for idx in range(4):
+        assert f"TrimIn = {idx}" in text
+        assert f"TrimOut = {idx}" in text
+    assert "Length = 4," in text
 
 
 def test_color_keyframes_at_chunk_start():
