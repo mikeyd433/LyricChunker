@@ -18,7 +18,11 @@ def test_module_order_covers_package():
         for p in (REPO_ROOT / "lyric_chunker").glob("*.py")
         if p.stem != "__init__"
     }
-    modules.add("comp/settings_gen")
+    modules.update(
+        f"comp/{p.stem}"
+        for p in (REPO_ROOT / "lyric_chunker" / "comp").glob("*.py")
+        if p.stem != "__init__"
+    )
     assert set(build.MODULE_ORDER) == modules
 
 

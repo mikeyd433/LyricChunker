@@ -19,6 +19,7 @@ from .ops_render import (
     LC_OT_render_queue,
     LC_OT_rerender_chunk,
 )
+from .ops_elements import LC_OT_create_elements, LC_OT_render_element
 from .ops_setup import LC_OT_setup_scene
 from .ops_timing import (
     LC_OT_clear_preview,
@@ -184,6 +185,11 @@ class LC_PT_panel(Panel):
             row = box.row(align=True)
             row.operator(LC_OT_verify_line.bl_idname, icon='CHECKMARK')
             row.operator(LC_OT_contact_sheet.bl_idname, icon='IMAGE_DATA')
+            row = box.row(align=True)
+            row.operator(LC_OT_create_elements.bl_idname, text="Elements",
+                         icon='FILE_NEW')
+            row.operator(LC_OT_render_element.bl_idname, text="Render Element",
+                         icon='RENDER_RESULT')
             row = box.row()
             row.scale_y = 1.3
             row.operator(LC_OT_generate_comps.bl_idname, icon='NODETREE')

@@ -183,6 +183,53 @@ from outside Resolve), verified working on Resolve 21's Fusion page.
 Because Fusion resolves the numbered chunk PNGs into one image
 sequence, each Loader trims to its own frame of that sequence.
 
+### Reactor elements — things that bounce with the words
+
+Anything else that should react to the vocal — a cut-out head, a logo, a
+prop modelled in Blender — is a **reactor element**: a transparent PNG
+plus a rule for which chunks it bounces on. Elements read the same
+manifest timing the lyrics do, so timing is captured once and drives
+everything.
+
+Press **Elements** in the Output box (or run `generate_comp.py <root>
+--init-elements`) to write a starter `elements.json` at the output root:
+
+```json
+{
+  "name": "HeadLeft",
+  "image": "elements/head_left.png",
+  "chunks": "odd",
+  "lines": "all",
+  "position": [0.22, 0.35],
+  "in_front": false,
+  "enabled": true
+}
+```
+
+- `chunks` — `"all"`, `"odd"`, `"even"`, or a list like `[1, 3, 5]`.
+  Two elements set to `odd` and `even` **alternate**; a single element
+  set to `"all"` bounces on every chunk. Switching between those is one
+  field plus `enabled`.
+- `lines` — `"all"` or a list, so an element can appear in some lines
+  only.
+- `in_front` — `false` (default) sits behind the lyrics, `true` in front.
+- `position`/`size` are a convenience. Elements are ideally **full-frame**
+  PNGs like the chunks, in which case leave them out and no Transform is
+  emitted at all.
+
+**Render Element** renders the selected Blender objects alone — full
+frame, transparent — into `elements/`, so something you modelled enters
+the pipeline identically to a photo cut-out.
+
+Element bounces alternate direction each time (the 3-point path is
+traversed forward, then backward), so an element rests between bounces
+with no reset keyframe. Bounces that would overlap the previous one are
+dropped with a warning.
+
+*Naming note:* avoid element filenames ending in digits
+(`head1.png`, `head2.png`) — Fusion may read those as an image sequence.
+Use `head_left.png` / `head_right.png`.
+
 ### Skipping the paste — Resolve script (experimental)
 
 `resolve/LyricChunker_BuildComp.py` does the paste for you: install it

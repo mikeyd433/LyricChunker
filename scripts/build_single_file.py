@@ -35,6 +35,7 @@ MODULE_ORDER = [
     "timing_srt",
     "timing_markers",
     "measure",
+    "comp/reactor",
     "comp/settings_gen",
     "properties",
     "presets",
@@ -43,6 +44,7 @@ MODULE_ORDER = [
     "ops_render",
     "ops_verify",
     "ops_timing",
+    "ops_elements",
     "ui",
 ]
 
@@ -68,7 +70,7 @@ if __name__ == "__main__":
 
 # Modules inlined into the self-contained comp generator, in
 # dependency order.
-COMP_MODULES = ["manifest", "comp/settings_gen"]
+COMP_MODULES = ["manifest", "comp/reactor", "comp/settings_gen"]
 
 REPO_LOAD_START = "# --- repo-load ---"
 REPO_LOAD_END = "# --- end repo-load ---"

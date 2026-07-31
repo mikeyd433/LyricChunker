@@ -36,15 +36,34 @@ def _load(name, relpath):
     return module
 
 
-_gen = _load("lc_settings_gen", "comp/settings_gen.py")
+def _load_package(name, relpath):
+    """Load comp/ as a real package so its relative imports resolve."""
+    directory = _PACKAGE_DIR / relpath
+    spec = importlib.util.spec_from_file_location(
+        name, str(directory / "__init__.py"),
+        submodule_search_locations=[str(directory)],
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_load_package("lc_comp", "comp")
+_gen = sys.modules["lc_comp.settings_gen"]
+_reactor = sys.modules["lc_comp.reactor"]
 _manifest = _load("lc_manifest", "manifest.py")
 
 DEFAULT_DIP_DEPTH = _gen.DEFAULT_DIP_DEPTH
 DEFAULT_DIP_IN = _gen.DEFAULT_DIP_IN
 DEFAULT_DIP_OUT = _gen.DEFAULT_DIP_OUT
 DEFAULT_HIGHLIGHT_GAIN = _gen.DEFAULT_HIGHLIGHT_GAIN
+DEFAULT_UNTIMED_SECONDS = _gen.DEFAULT_UNTIMED_SECONDS
 generate_line_setting = _gen.generate_line_setting
 read_manifest = _manifest.read_manifest
+ELEMENTS_FILENAME = _reactor.ELEMENTS_FILENAME
+load_elements = _reactor.load_elements
+template_elements = _reactor.template_elements
 # --- end repo-load ---
 
 
@@ -81,15 +100,41 @@ def main():
     ap.add_argument("--dip-out", type=int, default=DEFAULT_DIP_OUT,
                     help="frames to recover from the dip, default 3")
     ap.add_argument("--untimed-seconds", type=float,
-                    default=_gen.DEFAULT_UNTIMED_SECONDS,
+                    default=DEFAULT_UNTIMED_SECONDS,
                     help="with no timing data, cascade chunks across this "
                          "many seconds (default 3)")
     ap.add_argument("--untimed-frames", type=int, default=None,
                     help="with no timing data, cascade chunks across exactly "
                          "this many frames (overrides --untimed-seconds)")
+    ap.add_argument("--init-elements", action="store_true",
+                    help="write a starter elements.json beside the manifests "
+                         "and exit")
     args = ap.parse_args()
 
-    for manifest_path in find_manifests(args.paths):
+    if args.init_elements:
+        import json
+        root = Path(args.paths[0])
+        root = root if root.is_dir() else root.parent
+        target = root / ELEMENTS_FILENAME
+        if target.exists():
+            sys.exit(f"{target} already exists")
+        (root / "elements").mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(template_elements(), indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"wrote {target} — add element PNGs under {root / 'elements'}")
+        return
+
+    manifests = list(find_manifests(args.paths))
+    elements_root = manifests[0].parent.parent if manifests else Path(".")
+    elements, element_warnings = load_elements(
+        str(elements_root / ELEMENTS_FILENAME)
+    )
+    for warning in element_warnings:
+        print(f"  warning: {warning}")
+
+    for manifest_path in manifests:
         doc = read_manifest(manifest_path)
         clip_dir = args.clip_dir or str(manifest_path.parent)
         text, warnings = generate_line_setting(
@@ -101,6 +146,8 @@ def main():
             dip_out=args.dip_out,
             untimed_seconds=args.untimed_seconds,
             untimed_frames=args.untimed_frames,
+            elements=elements,
+            elements_dir=str(elements_root),
         )
         out_dir = args.out_dir or manifest_path.parent
         out_dir.mkdir(parents=True, exist_ok=True)

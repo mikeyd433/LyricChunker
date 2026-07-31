@@ -4,22 +4,11 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from conftest_util import PACKAGE_DIR, load  # noqa: E402
+from conftest_util import load_package  # noqa: E402
 
-import importlib.util
-
-
-def _load_comp():
-    spec = importlib.util.spec_from_file_location(
-        "lc_test_settings_gen", PACKAGE_DIR / "comp" / "settings_gen.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["lc_test_settings_gen"] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-gen = _load_comp()
+load_package("lc_test_comp", "comp")
+gen = sys.modules["lc_test_comp.settings_gen"]
+reactor = sys.modules["lc_test_comp.reactor"]
 
 
 def make_doc(n_chunks=4, line_start=12.5, fps=24):
@@ -152,3 +141,85 @@ def test_empty_manifest_rejected():
     doc["chunks"] = []
     with pytest.raises(ValueError):
         gen.generate_line_setting(doc, "/r")
+
+
+# --- reactor elements -----------------------------------------------------
+
+def test_chunk_selectors():
+    element = {"chunks": "all"}
+    assert reactor.chunk_indices(element, 5) == [0, 1, 2, 3, 4]
+    assert reactor.chunk_indices({"chunks": "odd"}, 5) == [0, 2, 4]
+    assert reactor.chunk_indices({"chunks": "even"}, 5) == [1, 3]
+    assert reactor.chunk_indices({"chunks": [1, 3, 9]}, 5) == [0, 2]
+    assert reactor.chunk_indices({}, 3) == [0, 1, 2]
+
+
+def test_line_filter():
+    assert reactor.applies_to_line({"lines": "all"}, 16)
+    assert reactor.applies_to_line({}, 16)
+    assert reactor.applies_to_line({"lines": [16, 17]}, 16)
+    assert not reactor.applies_to_line({"lines": [17]}, 16)
+
+
+def test_alternating_bounce_directions():
+    keys, warnings = reactor.displacement_keys([0, 10, 20], 1, 3)
+    assert warnings == []
+    # Each bounce traverses the path the other way; both ends are rest.
+    assert keys == [
+        (0, 0.0), (1, 0.5), (4, 1.0),
+        (10, 1.0), (11, 0.5), (14, 0.0),
+        (20, 0.0), (21, 0.5), (24, 1.0),
+    ]
+
+
+def test_overlapping_bounces_are_dropped_with_warning():
+    keys, warnings = reactor.displacement_keys([0, 2], 1, 3)
+    assert len(warnings) == 1
+    assert keys == [(0, 0.0), (1, 0.5), (4, 1.0)]
+
+
+def test_disabled_elements_are_skipped(tmp_path):
+    import json
+
+    doc = reactor.template_elements()
+    doc["elements"][1]["enabled"] = False
+    path = tmp_path / reactor.ELEMENTS_FILENAME
+    path.write_text(json.dumps(doc))
+    elements, warnings = reactor.load_elements(str(path))
+    assert [e["name"] for e in elements] == ["HeadLeft"]
+    assert warnings == []
+
+
+def test_missing_elements_file_is_not_an_error(tmp_path):
+    elements, warnings = reactor.load_elements(str(tmp_path / "nope.json"))
+    assert elements == [] and warnings == []
+
+
+def test_elements_appear_in_generated_graph():
+    doc = make_doc(n_chunks=4)
+    elements = [
+        {"name": "Head Left", "image": "elements/head_left.png",
+         "chunks": "odd", "position": [0.2, 0.35]},
+        {"name": "HeadRight", "image": "elements/head_right.png",
+         "chunks": "even", "in_front": True},
+    ]
+    text, _ = gen.generate_line_setting(
+        doc, "/renders/Line16", elements=elements, elements_dir="/renders"
+    )
+    assert text.count("{") == text.count("}")
+    # Name sanitised for Fusion, both branches present.
+    assert "Bounce_El_Head_Left = Transform {" in text
+    assert "Bounce_El_HeadRight = Transform {" in text
+    # Positioned element gets a Place transform; the default one doesn't.
+    assert "Place_El_Head_Left = Transform {" in text
+    assert "Place_El_HeadRight" not in text
+    # 4 chunks + 2 elements = 6 branches = 5 merges.
+    assert text.count("= Merge {") == 5
+    assert "/renders/elements/head_left.png" in text
+
+
+def test_element_excluded_from_other_lines():
+    doc = make_doc(n_chunks=2)
+    elements = [{"name": "Only17", "image": "a.png", "lines": [17]}]
+    text, _ = gen.generate_line_setting(doc, "/r", elements=elements)
+    assert "Only17" not in text

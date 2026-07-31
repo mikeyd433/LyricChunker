@@ -26,6 +26,7 @@ from .manifest import (
     seconds_to_frame,
     write_manifest,
 )
+from .comp.reactor import ELEMENTS_FILENAME, load_elements
 from .comp.settings_gen import generate_line_setting
 from .ops_generate import (
     collect_line_chunks,
@@ -659,8 +660,14 @@ class LC_OT_generate_comps(Operator):
                 f"No Line#.json manifests under {out_root} — render lines first",
             )
 
+        elements_path = os.path.join(out_root, ELEMENTS_FILENAME)
+        try:
+            elements, element_warnings = load_elements(elements_path)
+        except (ValueError, OSError) as exc:
+            return self.fail(context, f"Cannot read {elements_path}: {exc}")
+
         written = 0
-        warned = []
+        warned = list(element_warnings)
         for path in manifests:
             try:
                 doc = read_manifest(path)
@@ -675,6 +682,8 @@ class LC_OT_generate_comps(Operator):
                     props.untimed_spread_frames
                     if props.untimed_spread_unit == 'FRAMES' else None
                 ),
+                elements=elements,
+                elements_dir=out_root,
             )
             warned.extend(warnings)
             setting_path = os.path.splitext(path)[0] + ".setting"
@@ -686,8 +695,10 @@ class LC_OT_generate_comps(Operator):
             written += 1
 
         message = (
-            f"Wrote {written} .setting file(s) — open in a text editor, copy "
-            "all, paste into Fusion, wire the last Merge to MediaOut"
+            f"Wrote {written} .setting file(s)"
+            + (f" with {len(elements)} element(s)" if elements else "")
+            + " — open in a text editor, copy all, paste into Fusion, wire "
+            "the last Merge to MediaOut"
         )
         if warned:
             message += f" — {len(warned)} warning(s), see console"

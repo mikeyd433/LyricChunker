@@ -28,6 +28,18 @@ and connecting Media Pool imports by hand.
 
 import re
 
+from .reactor import (
+    DEFAULT_ELEMENT_DEPTH,
+    DEFAULT_ELEMENT_DIP_IN,
+    DEFAULT_ELEMENT_DIP_OUT,
+    DEFAULT_ELEMENT_POSITION,
+    applies_to_line,
+    chunk_indices,
+    displacement_keys,
+    is_absolute,
+    safe_name,
+)
+
 DEFAULT_HIGHLIGHT_GAIN = (1.0, 0.4, 0.05)
 DEFAULT_DIP_DEPTH = 0.015
 DEFAULT_DIP_IN = 1
@@ -54,6 +66,15 @@ def _join_clip_path(png_dir, filename):
     consumed by Resolve on the user's machine, not this one."""
     sep = "\\" if ("\\" in png_dir or re.match(r"^[A-Za-z]:", png_dir)) else "/"
     return png_dir.rstrip("/\\") + sep + filename
+
+
+def _element_path(image, base_dir):
+    """Element images may be absolute or relative to elements.json."""
+    if is_absolute(image):
+        return image
+    sep = "\\" if ("\\" in base_dir or re.match(r"^[A-Za-z]:", base_dir)) else "/"
+    tail = image.replace("/", sep).replace("\\", sep)
+    return base_dir.rstrip("/\\") + sep + tail
 
 
 def _lua_str(value):
@@ -209,11 +230,29 @@ def _color_gain(name, source, start, dip_in, highlight, pos):
     return "".join(parts)
 
 
-def _transform(name, source, start, dip_in, dip_out, depth, pos):
+def _place_transform(name, source, position, size, pos):
+    """Static placement for an element that is not already full-frame.
+
+    Full-frame elements (the recommended form, matching the chunk PNGs)
+    need no placement at all — this is only emitted when a position or
+    size is actually given."""
+    return f"""\
+\t\t{name} = Transform {{
+\t\t\tInputs = {{
+\t\t\t\tInput = Input {{ SourceOp = {_lua_str(source)}, Source = "Output", }},
+\t\t\t\tCenter = Input {{ Value = {{ {_num(position[0])}, {_num(position[1])} }}, }},
+\t\t\t\tSize = Input {{ Value = {_num(size)}, }},
+\t\t\t}},
+\t\t\tViewInfo = OperatorInfo {{ Pos = {{ {_num(pos[0])}, {_num(pos[1])} }} }},
+\t\t}},
+"""
+
+
+def _bounce_transform(name, source, keys, depth, pos):
     """Transform whose Center rides a 3-point PolyPath (rest, -depth,
-    rest) via a Displacement spline keyed 0 -> 0.5 -> 1 at S, S+dip_in,
-    S+dip_in+dip_out — the exact structure of the reference comp's
-    hand-animated bounce, so it edits identically in the spline editor."""
+    rest), driven by an explicit Displacement key list — the exact
+    structure of the reference comp's hand-animated bounce, so it edits
+    identically in the spline editor."""
     path = name + "Path"
     return f"""\
 \t\t{name} = Transform {{
@@ -241,11 +280,48 @@ def _transform(name, source, start, dip_in, dip_out, depth, pos):
 \t\t\t\t}}
 \t\t\t}},
 \t\t}},
-""" + _spline(
-        path + "Displacement", (255, 0, 255),
-        [(start, 0.0), (start + dip_in, 0.5), (start + dip_in + dip_out, 1.0)],
-        locked_y=True,
-    )
+""" + _spline(path + "Displacement", (255, 0, 255), keys, locked_y=True)
+
+
+def _transform(name, source, start, dip_in, dip_out, depth, pos):
+    """A lyric chunk's single bounce at its start frame."""
+    keys = [
+        (start, 0.0),
+        (start + dip_in, 0.5),
+        (start + dip_in + dip_out, 1.0),
+    ]
+    return _bounce_transform(name, source, keys, depth, pos)
+
+
+def _element_branch(element, base_dir, starts, length, row):
+    """One reactor element: Loader -> optional Place -> Bounce."""
+    name = safe_name(element.get("name"))
+    y = row * _ROW_Y
+    loader = f"Load_El_{name}"
+    depth = float(element.get("bounce_depth", DEFAULT_ELEMENT_DEPTH))
+    dip_in = int(element.get("dip_in", DEFAULT_ELEMENT_DIP_IN))
+    dip_out = int(element.get("dip_out", DEFAULT_ELEMENT_DIP_OUT))
+    position = tuple(element.get("position", DEFAULT_ELEMENT_POSITION))
+    size = float(element.get("size", 1.0))
+
+    # Element images are standalone files, so no sequence trimming.
+    parts = [_loader(
+        loader, _element_path(element["image"], base_dir), length,
+        (0.0, y), frame_index=0, clip_frames=1,
+    )]
+    tip = loader
+    if position != tuple(DEFAULT_ELEMENT_POSITION) or size != 1.0:
+        place = f"Place_El_{name}"
+        parts.append(_place_transform(place, tip, position, size, (_COL_X, y)))
+        tip = place
+
+    keys, warnings = displacement_keys(starts, dip_in, dip_out)
+    warnings = [f"element '{name}': {w}" for w in warnings]
+    if keys:
+        bounce = f"Bounce_El_{name}"
+        parts.append(_bounce_transform(bounce, tip, keys, depth, (2 * _COL_X, y)))
+        tip = bounce
+    return "".join(parts), tip, warnings
 
 
 def _merge(name, background, foreground, pos):
@@ -270,21 +346,51 @@ def generate_line_setting(
     dip_out=DEFAULT_DIP_OUT,
     untimed_seconds=DEFAULT_UNTIMED_SECONDS,
     untimed_frames=None,
+    elements=None,
+    elements_dir=None,
 ):
     """Build the pasteable node-graph text for one line manifest.
 
     ``png_dir`` is the directory holding the chunk PNGs (normally the
-    manifest's own folder). Returns ``(text, warnings)``. The graph ends
-    at the last Merge (or the single chunk's Transform) — wire that to
-    MediaOut after pasting.
+    manifest's own folder). ``elements`` is the optional reactor element
+    list (§ reactor.py), resolved against ``elements_dir``. Returns
+    ``(text, warnings)``. The graph ends at the last Merge (or a single
+    branch's tip) — wire that to MediaOut after pasting.
     """
     chunks = doc["chunks"]
     if not chunks:
         raise ValueError("manifest has no chunks")
     frames, warnings = line_local_frames(doc, untimed_seconds, untimed_frames)
     length = comp_length(doc, frames)
+    line_no = doc["line"]["index"]
+
+    behind, in_front = [], []
+    for element in (elements or []):
+        if not applies_to_line(element, line_no):
+            continue
+        (in_front if element.get("in_front") else behind).append(element)
 
     tools = []
+
+    def add_elements(group, first_row):
+        """Element branches, returning their tip names in order."""
+        tips = []
+        for offset, element in enumerate(group):
+            starts = [
+                frames[i] for i in chunk_indices(element, len(chunks))
+            ]
+            text, tip, element_warnings = _element_branch(
+                element, elements_dir or png_dir, starts, length,
+                first_row + offset,
+            )
+            tools.append(text)
+            warnings.extend(element_warnings)
+            tips.append(tip)
+        return tips
+
+    # Behind the lyrics first — the merge chain stacks in list order.
+    back_tips = add_elements(behind, len(chunks))
+
     branch_tips = []
     for row, (chunk, start) in enumerate(zip(chunks, frames)):
         base = chunk["name"]
@@ -300,9 +406,11 @@ def generate_line_setting(
         tools.append(_transform(move, color, start, dip_in, dip_out, dip_depth, (2 * _COL_X, y)))
         branch_tips.append(move)
 
-    line_no = doc["line"]["index"]
-    current = branch_tips[0]
-    for i, tip in enumerate(branch_tips[1:], start=1):
+    front_tips = add_elements(in_front, len(chunks) + len(behind))
+    ordered_tips = back_tips + branch_tips + front_tips
+
+    current = ordered_tips[0]
+    for i, tip in enumerate(ordered_tips[1:], start=1):
         merge = f"Merge_Line{line_no}_{i}"
         tools.append(_merge(
             merge, current, tip,
