@@ -18,6 +18,11 @@ from .ops_render import (
     LC_OT_rerender_chunk,
 )
 from .ops_setup import LC_OT_setup_scene
+from .ops_timing import (
+    LC_OT_clear_preview,
+    LC_OT_preview_timing,
+    LC_OT_tap_timing,
+)
 from .ops_verify import LC_OT_verify_line
 from .presets import (
     LC_OT_preset_apply,
@@ -51,6 +56,9 @@ classes = (
     LC_OT_generate_comps,
     LC_OT_verify_line,
     LC_OT_contact_sheet,
+    LC_OT_tap_timing,
+    LC_OT_preview_timing,
+    LC_OT_clear_preview,
     LC_OT_preset_save,
     LC_OT_preset_apply,
     LC_OT_preset_remove,

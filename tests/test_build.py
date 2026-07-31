@@ -57,8 +57,8 @@ def test_bundle_zip_contents(tmp_path):
     out = build.build_bundle(tmp_path / "bundle.zip", flat, comp, meta)
     with zipfile.ZipFile(out) as zf:
         assert sorted(zf.namelist()) == [
-            "Generate Comps.bat", "README.txt", "generate_comp.py",
-            "lyric_chunker.py",
+            "Generate Comps.bat", "LyricChunker_BuildComp.py", "README.txt",
+            "generate_comp.py", "lyric_chunker.py",
         ]
         assert zf.read("lyric_chunker.py").decode() == flat
         assert b"\r\n" in zf.read("Generate Comps.bat")

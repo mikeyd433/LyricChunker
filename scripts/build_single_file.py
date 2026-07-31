@@ -42,8 +42,11 @@ MODULE_ORDER = [
     "ops_generate",
     "ops_render",
     "ops_verify",
+    "ops_timing",
     "ui",
 ]
+
+RESOLVE_SCRIPT = REPO_ROOT / "resolve" / "LyricChunker_BuildComp.py"
 
 HEADER = '''\
 # --------------------------------------------------------------------------
@@ -91,6 +94,12 @@ Generate Comps.bat — no-terminal way to run the generator: drag your
   render output folder onto the .bat (or double-click it and paste the
   path when asked). The add-on's "Generate Fusion Comps" panel button
   does the same thing from inside Blender.
+
+LyricChunker_BuildComp.py — optional DaVinci Resolve script (experimental)
+  that pastes a line's node graph into the open Fusion composition and
+  wires it to MediaOut, so you skip the copy/paste entirely. Install it
+  into Resolve's Fusion Scripts\\Comp folder; see the header of the file
+  for the exact path on your platform.
 
 Docs: https://github.com/mikeyd433/LyricChunker
 """
@@ -234,6 +243,7 @@ def build_bundle(bundle_path, addon_source, comp_source, meta):
         ("lyric_chunker.py", addon_source),
         ("generate_comp.py", comp_source),
         ("Generate Comps.bat", BUNDLE_BAT.replace("\n", "\r\n")),
+        ("LyricChunker_BuildComp.py", RESOLVE_SCRIPT.read_text(encoding="utf-8")),
         ("README.txt", BUNDLE_README),
     ]
     with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as zf:

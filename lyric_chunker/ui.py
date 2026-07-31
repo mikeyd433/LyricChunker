@@ -20,6 +20,11 @@ from .ops_render import (
     LC_OT_rerender_chunk,
 )
 from .ops_setup import LC_OT_setup_scene
+from .ops_timing import (
+    LC_OT_clear_preview,
+    LC_OT_preview_timing,
+    LC_OT_tap_timing,
+)
 from .ops_verify import LC_OT_verify_line
 from .presets import LC_OT_preset_apply, LC_OT_preset_remove, LC_OT_preset_save
 from .properties import status_lines
@@ -116,6 +121,26 @@ class LC_PT_panel(Panel):
         else:
             row.prop(props, "untimed_spread")
         row.prop(props, "untimed_spread_unit", text="")
+
+        col = box.column(align=True)
+        if props.is_tapping:
+            col.label(text=props.progress, icon='REC')
+            col.label(text="Enter/Click: tap · Backspace: undo · Esc: done")
+        else:
+            row = col.row(align=True)
+            row.scale_y = 1.2
+            op = row.operator(
+                LC_OT_tap_timing.bl_idname,
+                text=f"Tap Line {get_target_line(context)}", icon='REC',
+            )
+            op.all_lines = False
+            op = row.operator(
+                LC_OT_tap_timing.bl_idname, text="Tap All", icon='REC',
+            )
+            op.all_lines = True
+            row = col.row(align=True)
+            row.operator(LC_OT_preview_timing.bl_idname, icon='PLAY')
+            row.operator(LC_OT_clear_preview.bl_idname, text="", icon='X')
 
         box = layout.box()
         box.label(text="Style Presets", icon='PRESET')

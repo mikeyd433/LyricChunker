@@ -220,6 +220,7 @@ class LyricChunkerProps(PropertyGroup):
     status_error: BoolProperty(default=False)
     last_line: IntProperty(default=0)
     is_rendering: BoolProperty(default=False)
+    is_tapping: BoolProperty(default=False)
     render_cancel: BoolProperty(default=False)
     progress: StringProperty(default="")
 

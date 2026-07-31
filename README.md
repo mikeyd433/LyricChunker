@@ -75,6 +75,15 @@ Chunker**.
      along to the vocal. A marker named `Line1_Chunk1` binds to that
      chunk directly (recommended); unnamed markers map to chunks in
      order. **Markers win over SRT per chunk.**
+   - **Tap Timing:** the fastest route to real syllable timing. Press
+     **Tap Line N** or **Tap All**, the scene starts playing, and each
+     tap (Enter or click) drops a marker named for the next chunk in
+     order — no hand-naming. Backspace undoes the last tap, Esc
+     finishes.
+   - **Preview Timing** keyframes each chunk's viewport colour white →
+     highlight at its start time, so you can scrub against the song and
+     check the timing before going near Resolve. It's viewport-only and
+     never affects renders; **Clear Preview** removes it.
    - Timing is a scaffold — chunks get a start time only, and you
      fine-tune in Fusion. No end times: hold-until-line-clears is a
      comp-side decision.
@@ -169,8 +178,18 @@ the Fusion node area, paste, and wire the last Merge to MediaOut.
 Highlight color and bounce are tunable via `--highlight`, `--dip-depth`,
 `--dip-in`, `--dip-out`.
 
-**Experimental:** generated graphs use Loader nodes (Media Pool IDs
-can't be fabricated from outside Resolve). Whether pasted Loaders
-render on the Fusion page must be verified per install — if they don't,
-paste still works for everything downstream; connect MediaIn nodes to
-the ColorGains by hand.
+Generated graphs use Loader nodes (Media Pool IDs can't be fabricated
+from outside Resolve), verified working on Resolve 21's Fusion page.
+Because Fusion resolves the numbered chunk PNGs into one image
+sequence, each Loader trims to its own frame of that sequence.
+
+### Skipping the paste — Resolve script (experimental)
+
+`resolve/LyricChunker_BuildComp.py` does the paste for you: install it
+into Resolve's Fusion `Scripts/Comp` folder (path in the file header),
+open the Fusion page on a Fusion Composition clip, and run
+**Workspace > Scripts > Comp > LyricChunker_BuildComp**. Give it the
+output root and a line number and it pastes that line's graph and wires
+it to MediaOut. It pastes the same `.setting` text that works by hand,
+so if a scripting call misbehaves it says so in the console and the
+manual paste still works.
