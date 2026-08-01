@@ -206,10 +206,21 @@ Press **Elements** in the Output box (or run `generate_comp.py <root>
 }
 ```
 
+- `motion` — `"travel"` hops the element **from word to word**, arcing
+  up and over and *landing* on each chunk exactly as it lights up (a
+  bouncing-ball pointer). `"bob"` keeps it at a fixed spot and dips it
+  in place. Travel positions the element for you from the manifest's
+  `bbox_px`, so it wants a **tight cut-out**; bob wants a full-frame PNG
+  with the image already where you want it.
 - `chunks` — `"all"`, `"odd"`, `"even"`, or a list like `[1, 3, 5]`.
-  Two elements set to `odd` and `even` **alternate**; a single element
-  set to `"all"` bounces on every chunk. Switching between those is one
-  field plus `enabled`.
+  Two elements set to `odd` and `even` **alternate** — in travel mode
+  they leapfrog each other down the line. A single element set to
+  `"all"` hits every chunk. Switching between those is one field plus
+  `enabled`.
+- `offset` — `[x, y]` from the word's top centre; the default
+  `[0, 0.08]` rides just above the text. `hop_frames` is how long the
+  arc takes (default 6, clamped to the gap between words) and
+  `arc_height` how high it peaks.
 - `lines` — `"all"` or a list, so an element can appear in some lines
   only.
 - `in_front` — `false` (default) sits behind the lyrics, `true` in front.
@@ -221,10 +232,11 @@ Press **Elements** in the Output box (or run `generate_comp.py <root>
 frame, transparent — into `elements/`, so something you modelled enters
 the pipeline identically to a photo cut-out.
 
-Element bounces alternate direction each time (the 3-point path is
-traversed forward, then backward), so an element rests between bounces
-with no reset keyframe. Bounces that would overlap the previous one are
-dropped with a warning.
+Travel elements are driven by an XYPath — independent X and Y splines —
+so the horizontal hop and the vertical arc are keyed exactly rather than
+inferred from path geometry. Bob elements alternate their path direction
+each time (forward, then backward), so they rest between bounces with no
+reset keyframe; overlapping bounces are dropped with a warning.
 
 *Naming note:* avoid element filenames ending in digits
 (`head1.png`, `head2.png`) — Fusion may read those as an image sequence.

@@ -15,18 +15,26 @@ def make_doc(n_chunks=4, line_start=12.5, fps=24):
     chunks = []
     for i in range(1, n_chunks + 1):
         start_seconds = line_start + (i - 1) * 0.25
+        # Words laid out left to right, 400px apart, 100px tall.
+        x_min = 200 + (i - 1) * 400
         chunks.append({
             "index": i,
             "name": f"Line16_Chunk{i}",
             "text": f"chunk{i}",
             "filename": f"Line16_Chunk{i}.png",
+            "bbox_px": [x_min, 500, x_min + 200, 600],
+            "screen_position": [0.5, 0.5],
             "start_seconds": start_seconds,
             "start_frame": round(start_seconds * fps),
             "timing_source": "srt",
         })
     return {
         "manifest_version": 1,
-        "render": {"fps": fps, "fps_base": 1.0},
+        "render": {
+            "fps": fps, "fps_base": 1.0,
+            "resolution_x": 1920, "resolution_y": 1080,
+            "resolution_percentage": 100,
+        },
         "line": {
             "index": 16,
             "start_seconds": line_start,
@@ -186,7 +194,7 @@ def test_disabled_elements_are_skipped(tmp_path):
     path = tmp_path / reactor.ELEMENTS_FILENAME
     path.write_text(json.dumps(doc))
     elements, warnings = reactor.load_elements(str(path))
-    assert [e["name"] for e in elements] == ["HeadLeft"]
+    assert [e["name"] for e in elements] == ["HeadOne"]
     assert warnings == []
 
 
@@ -216,6 +224,60 @@ def test_elements_appear_in_generated_graph():
     # 4 chunks + 2 elements = 6 branches = 5 merges.
     assert text.count("= Merge {") == 5
     assert "/renders/elements/head_left.png" in text
+
+
+def test_landing_is_top_centre_of_the_word():
+    doc = make_doc(n_chunks=1)
+    # bbox [200, 500, 400, 600] at 1920x1080 -> centre x 300/1920,
+    # top y 600/1080, plus the offset.
+    landing = gen.chunk_landing(doc["chunks"][0], (1920, 1080), (0.0, 0.08))
+    assert landing[0] == pytest.approx(300 / 1920)
+    assert landing[1] == pytest.approx(600 / 1080 + 0.08)
+
+
+def test_travel_lands_on_the_beat_and_arcs_between():
+    starts = [0, 12, 24]
+    landings = [(0.2, 0.5), (0.5, 0.5), (0.8, 0.5)]
+    x_keys, y_keys, warnings = reactor.travel_keys(
+        starts, landings, hop_frames=6, arc_height=0.1
+    )
+    assert warnings == []
+    # Sits on word 1, launches 6 frames before each landing, arrives
+    # exactly on the chunk's start frame.
+    assert x_keys == [(0, 0.2), (6, 0.2), (12, 0.5), (18, 0.5), (24, 0.8)]
+    # Y peaks mid-hop, back to the word line on landing.
+    assert y_keys == [
+        (0, 0.5), (6, 0.5), (9, 0.6), (12, 0.5),
+        (18, 0.5), (21, 0.6), (24, 0.5),
+    ]
+
+
+def test_travel_hop_clamps_to_a_short_gap():
+    x_keys, _y, warnings = reactor.travel_keys(
+        [0, 2], [(0.2, 0.5), (0.4, 0.5)], hop_frames=6, arc_height=0.1
+    )
+    assert warnings == []
+    # Gap is 2 frames, so the hop takes 2 rather than overrunning.
+    assert x_keys == [(0, 0.2), (2, 0.4)]
+
+
+def test_travel_mode_emits_an_xypath():
+    doc = make_doc(n_chunks=4)
+    elements = [{
+        "name": "HeadOne", "image": "elements/head_one.png",
+        "motion": "travel", "chunks": "odd",
+    }]
+    text, _ = gen.generate_line_setting(
+        doc, "/renders/Line16", elements=elements, elements_dir="/renders"
+    )
+    assert text.count("{") == text.count("}")
+    assert "Travel_El_HeadOne = Transform {" in text
+    assert "Travel_El_HeadOnePath = XYPath {" in text
+    assert "Travel_El_HeadOnePathX = BezierSpline {" in text
+    assert "Travel_El_HeadOnePathY = BezierSpline {" in text
+    # Travel mode never emits the in-place bounce nodes.
+    assert "Bounce_El_HeadOne" not in text
+    assert "Place_El_HeadOne" not in text
 
 
 def test_element_excluded_from_other_lines():

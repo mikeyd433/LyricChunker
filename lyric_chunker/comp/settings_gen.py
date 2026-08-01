@@ -29,15 +29,19 @@ and connecting Media Pool imports by hand.
 import re
 
 from .reactor import (
+    DEFAULT_ARC_HEIGHT,
     DEFAULT_ELEMENT_DEPTH,
     DEFAULT_ELEMENT_DIP_IN,
     DEFAULT_ELEMENT_DIP_OUT,
     DEFAULT_ELEMENT_POSITION,
+    DEFAULT_HOP_FRAMES,
+    DEFAULT_TRAVEL_OFFSET,
     applies_to_line,
     chunk_indices,
     displacement_keys,
     is_absolute,
     safe_name,
+    travel_keys,
 )
 
 DEFAULT_HIGHLIGHT_GAIN = (1.0, 0.4, 0.05)
@@ -139,6 +143,34 @@ def line_local_frames(doc, untimed_seconds=DEFAULT_UNTIMED_SECONDS,
         else:
             frames.append(max(0, start - base))
     return frames, warnings
+
+
+def pixel_resolution(doc):
+    render = doc.get("render", {})
+    pct = render.get("resolution_percentage", 100) / 100.0
+    return (
+        max(1, round(render.get("resolution_x", 1920) * pct)),
+        max(1, round(render.get("resolution_y", 1080) * pct)),
+    )
+
+
+def chunk_landing(chunk, resolution, offset):
+    """Where a travelling element should land on this chunk: the top
+    centre of its pixel bbox, plus the element's offset.
+
+    ``bbox_px`` is [x_min, y_min, x_max, y_max] with the origin at
+    bottom-left (§1.4), which is already Fusion's convention — so the
+    normalized result drops straight into a Transform centre.
+    """
+    res_x, res_y = resolution
+    bbox = chunk.get("bbox_px")
+    if bbox and len(bbox) == 4 and bbox[2] > bbox[0]:
+        x = ((bbox[0] + bbox[2]) / 2.0) / res_x
+        y = bbox[3] / res_y
+    else:
+        screen = chunk.get("screen_position") or (0.5, 0.5)
+        x, y = screen[0], screen[1]
+    return (x + offset[0], y + offset[1])
 
 
 def comp_length(doc, frames):
@@ -248,6 +280,31 @@ def _place_transform(name, source, position, size, pos):
 """
 
 
+def _travel_transform(name, source, x_keys, y_keys, size, pos):
+    """Transform whose Centre is driven by an XYPath — independent X and
+    Y splines, so the horizontal hop and the vertical arc are keyed
+    exactly rather than inferred from path geometry."""
+    path = name + "Path"
+    return f"""\
+\t\t{name} = Transform {{
+\t\t\tInputs = {{
+\t\t\t\tInput = Input {{ SourceOp = {_lua_str(source)}, Source = "Output", }},
+\t\t\t\tCenter = Input {{ SourceOp = {_lua_str(path)}, Source = "Value", }},
+\t\t\t\tSize = Input {{ Value = {_num(size)}, }},
+\t\t\t}},
+\t\t\tViewInfo = OperatorInfo {{ Pos = {{ {_num(pos[0])}, {_num(pos[1])} }} }},
+\t\t}},
+\t\t{path} = XYPath {{
+\t\t\tDrawMode = "ModifyOnly",
+\t\t\tInputs = {{
+\t\t\t\tX = Input {{ SourceOp = {_lua_str(path + "X")}, Source = "Value", }},
+\t\t\t\tY = Input {{ SourceOp = {_lua_str(path + "Y")}, Source = "Value", }},
+\t\t\t}},
+\t\t}},
+""" + _spline(path + "X", (255, 128, 0), x_keys) \
+    + _spline(path + "Y", (255, 0, 128), y_keys)
+
+
 def _bounce_transform(name, source, keys, depth, pos):
     """Transform whose Center rides a 3-point PolyPath (rest, -depth,
     rest), driven by an explicit Displacement key list — the exact
@@ -293,15 +350,15 @@ def _transform(name, source, start, dip_in, dip_out, depth, pos):
     return _bounce_transform(name, source, keys, depth, pos)
 
 
-def _element_branch(element, base_dir, starts, length, row):
-    """One reactor element: Loader -> optional Place -> Bounce."""
+def _element_branch(element, base_dir, starts, landings, length, row):
+    """One reactor element.
+
+    ``travel`` motion hops the element between word positions, landing
+    on each chunk's start frame; ``bob`` (the default) dips it in place.
+    """
     name = safe_name(element.get("name"))
     y = row * _ROW_Y
     loader = f"Load_El_{name}"
-    depth = float(element.get("bounce_depth", DEFAULT_ELEMENT_DEPTH))
-    dip_in = int(element.get("dip_in", DEFAULT_ELEMENT_DIP_IN))
-    dip_out = int(element.get("dip_out", DEFAULT_ELEMENT_DIP_OUT))
-    position = tuple(element.get("position", DEFAULT_ELEMENT_POSITION))
     size = float(element.get("size", 1.0))
 
     # Element images are standalone files, so no sequence trimming.
@@ -310,6 +367,25 @@ def _element_branch(element, base_dir, starts, length, row):
         (0.0, y), frame_index=0, clip_frames=1,
     )]
     tip = loader
+
+    if str(element.get("motion", "bob")).lower() == "travel":
+        x_keys, y_keys, warnings = travel_keys(
+            starts, landings,
+            int(element.get("hop_frames", DEFAULT_HOP_FRAMES)),
+            float(element.get("arc_height", DEFAULT_ARC_HEIGHT)),
+        )
+        if x_keys:
+            travel = f"Travel_El_{name}"
+            parts.append(_travel_transform(
+                travel, tip, x_keys, y_keys, size, (_COL_X, y)
+            ))
+            tip = travel
+        return "".join(parts), tip, [f"element '{name}': {w}" for w in warnings]
+
+    depth = float(element.get("bounce_depth", DEFAULT_ELEMENT_DEPTH))
+    dip_in = int(element.get("dip_in", DEFAULT_ELEMENT_DIP_IN))
+    dip_out = int(element.get("dip_out", DEFAULT_ELEMENT_DIP_OUT))
+    position = tuple(element.get("position", DEFAULT_ELEMENT_POSITION))
     if position != tuple(DEFAULT_ELEMENT_POSITION) or size != 1.0:
         place = f"Place_El_{name}"
         parts.append(_place_transform(place, tip, position, size, (_COL_X, y)))
@@ -372,15 +448,23 @@ def generate_line_setting(
 
     tools = []
 
+    resolution = pixel_resolution(doc)
+
     def add_elements(group, first_row):
         """Element branches, returning their tip names in order."""
         tips = []
         for offset, element in enumerate(group):
-            starts = [
-                frames[i] for i in chunk_indices(element, len(chunks))
+            indices = chunk_indices(element, len(chunks))
+            starts = [frames[i] for i in indices]
+            travel_offset = tuple(
+                element.get("offset", DEFAULT_TRAVEL_OFFSET)
+            )
+            landings = [
+                chunk_landing(chunks[i], resolution, travel_offset)
+                for i in indices
             ]
             text, tip, element_warnings = _element_branch(
-                element, elements_dir or png_dir, starts, length,
+                element, elements_dir or png_dir, starts, landings, length,
                 first_row + offset,
             )
             tools.append(text)
